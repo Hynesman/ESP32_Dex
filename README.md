@@ -5,7 +5,7 @@
 # Dexcom_Follow
 a library to connect to Dexcom Follow from a Esp32.  using my other library Dexcom_follow
 
-# Defference from Dexcom_follow
+# Differance from Dexcom_follow
 
 This is a platformIO arduino project.  If you have visual studio code and platformio extension then you should be able to open the folder and build and flash directly to an esp32 board.
 I use the esp32 dev kit 1 but i imagine it will work with most of the original ESP32 boards.  not tested on the newer boards.
