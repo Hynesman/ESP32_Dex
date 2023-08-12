@@ -215,15 +215,13 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         display.println("attempting reconnect");
         display.display();
         // wm.autoConnect()
-        WiFi.reconnect();
-        // WiFi.begin(ssid, password);
-        while (WiFi.status() != WL_CONNECTED)
+        if (!wm.autoConnect("Follower_AP"))
         {
-          Serial.println("wifi not connected. Trying again...");
-          if (!WiFi.reconnect())
-          {
-            vTaskDelay(pdMS_TO_TICKS(15 * 1000));
-          }
+          Serial.println("failed to connect and hit timeout");
+          delay(3000);
+          // if we still have not connected restart and try all over again
+          ESP.restart();
+          delay(5000);
         }
         delay_time = 5;
       }
