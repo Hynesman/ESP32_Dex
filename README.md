@@ -1,4 +1,4 @@
-# ESP32_dexcom_follow
+# ESP32_dex
 
 # I am not a medical professional and this code should not be used to make medical decisions. Use at your own risk and remember to always use approved methods to check your blood sugar.  
 
@@ -18,8 +18,11 @@ If it cannot connect the Wifi Access point will be launched again.
 It will retain info on reboot.
 
 If you wish to launch the Access point manually and change credentials, you can pull GPIO0 high.  this will trigger an interrupt to launch the Access point.
+![Alt text](Diagram1.png)
 
 It is dependant on the Wifimanager library.  All dependencies can be seen in platformio.ini
+
+![Alt text](platformio.ini)
 
 # Background
 I'm a dad to a son with T1 Diabetes.  I wanted to explore the possibility of connecting to the dexcom follow API from low cost hardware.
@@ -28,4 +31,5 @@ I've included a simple example sketch to get you started.  I hope Someone somewh
 I will when possible push updates as they come and work on improving the Dexcom follower class i've made here.
 
 let me know if you've put it to good use or you have spotted a flaw.
+
  
