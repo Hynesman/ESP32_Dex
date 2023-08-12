@@ -18,6 +18,7 @@ If it cannot connect the Wifi Access point will be launched again.
 It will retain info on reboot.
 
 If you wish to launch the Access point manually and change credentials, you can pull GPIO0 high.  this will trigger an interrupt to launch the Access point.
+
 ![Alt text](Diagram1.png)
 
 It is dependant on the Wifimanager library.  All dependencies can be seen in platformio.ini
