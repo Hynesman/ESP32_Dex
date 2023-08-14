@@ -302,3 +302,80 @@ const char *Follower::getTrendSymbol(const char *trendDescription)
         return ""; // Default to an empty string for unknown trends
     }
 };
+
+void Follower::parseAndStoreData(String jsonString)
+{
+    size_t length = jsonString.length();
+    Serial.println(length);
+    DynamicJsonDocument doc(length*2); // Adjust the size as needed
+
+    DeserializationError error = deserializeJson(doc, jsonString);
+
+    if (error)
+    {
+        Serial.print("Error parsing JSON: ");
+        Serial.println(error.c_str());
+        return;
+    }
+
+    JsonArray jsonArray = doc.as<JsonArray>();
+
+    int index = 0;
+    for (JsonObject obj : jsonArray)
+    {
+        if (index >= CASHED_READINGS)
+            break;
+
+        //GlucoseArray[index].timestamp = obj["WT"].as<unsigned long>();
+        GlucoseArray[index].timestamp = convertToUnixTimestamp(obj["DT"].as<const char *>());
+        GlucoseArray[index].mg_dl = obj["Value"].as<int>();
+        GlucoseArray[index].mmol_l = GlucoseArray[index].mg_dl * 0.0555; // Convert to mmol/L
+        GlucoseArray[index].trend_description = obj["Trend"].as<const char *>();
+        GlucoseArray[index].trend_Symbol = obj["Trend"].as<const char *>();
+        Serial.println(GlucoseArray[index].mmol_l);
+        Serial.println(GlucoseArray[index].timestamp);
+
+        index++;
+    }
+    
+}
+
+bool Follower::GlucoseLevelsArrayPopulate()
+{
+    bool result = false;
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        HTTPClient http;
+
+        String url = DexcomServer + "/Publisher/ReadPublisherLatestGlucoseValues?sessionId=";
+        url += SessionID;
+        url += "&minutes=1440&maxCount=";
+        url += CASHED_READINGS;
+
+        http.begin(url);
+
+        int httpResponseCode = http.GET();
+        if (httpResponseCode == HTTP_CODE_OK)
+        {
+            String response = http.getString();
+
+            parseAndStoreData(response);
+
+            result = true;
+        }
+        else
+        {
+            Serial.print("HTTP GET request failed, error code: ");
+            Serial.println(httpResponseCode);
+            getNewSessionID();
+
+            result = false;
+        }
+
+        http.end();
+    }
+    else{
+        result = false;
+    }
+    return result;
+};

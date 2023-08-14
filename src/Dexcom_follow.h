@@ -24,7 +24,7 @@ struct GlucoseReading
     int mg_dl;
     double mmol_l;
     const char *trend_description;
-    const char *trend_Symbol;
+    const char *trend_Symbol="";
     // Define other members as needed for your application
 };
 
@@ -38,6 +38,8 @@ public:
     bool GlucoseLevelsNow();
     GlucoseReading GlucoseNow;
     bool SessionIDnotDefault();
+    bool GlucoseLevelsArrayPopulate();
+    GlucoseReading GlucoseArray[CASHED_READINGS];
 
 private:
     String DexcomServer;
@@ -47,12 +49,12 @@ private:
     String jsonStr;
     int head = 0;
     int tail = 0;
-    GlucoseReading GlucouseArray[CASHED_READINGS];
     double convertToMmol(int mgdl);
     String removeCharacterFromString(String input, char characterToRemove);
     const char *getTrendSymbol(const char *trendDescription);
     void update_json_string();
     unsigned long convertToUnixTimestamp(const char* dtValue);
+    void parseAndStoreData(String jsonString);
 };
 
 #endif
