@@ -187,13 +187,6 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         Home_values.trend_Symbol = follower.GlucoseNow.trend_Symbol;
         Home_values.message_2 = "";
         follower.GlucoseLevelsArrayPopulate();
-        // Serial.println(ntpClient.getEpochTime());
-
-        // Print out the current time in timestamp format
-        // Serial.print("isr:Current time (Unix timestamp): ");
-        // Serial.println(currentTime);
-        // Serial.println(ntpClient.getDay());
-        // Serial.println(ntpClient.getFormattedTime());
 
         // figure out the delay to the next value
         unsigned long currentTime = ntpClient.getEpochTime();
@@ -319,13 +312,13 @@ void Access_point()
 
     // Copy the string value
     strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
-    Serial.print("D_User: ");
-    Serial.println(D_User);
+    //Serial.print("D_User: ");
+    //Serial.println(D_User);
 
     // Copy the string value
     strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
-    Serial.print("D_User: ");
-    Serial.println(D_Pass);
+    //Serial.print("D_User: ");
+    //Serial.println(D_Pass);
 
     follower.Set_user_pass(D_User, D_Pass);
     follower.getNewSessionID();
@@ -403,7 +396,7 @@ const unsigned char *Trend_to_image(const char *trend_char)
   }
   else
   {
-    return arrowsdash;
+    return arrowsQ;
   }
 }
 
@@ -424,7 +417,7 @@ void Homescreen_display()
   dtostrf(Home_values.mmol_l, 2, 1, glucoseStr); // Format: total width = 4, 1 decimal place
 
   display.println(glucoseStr);
-  // display.print(" ");
+  // display.print(" ");  // using custom symbols instead of this code
   //display.setTextSize(3);
   //display.print(Home_values.trend_Symbol);
   //display.setTextSize(4);
@@ -444,17 +437,12 @@ void Homescreen_display()
   int minutes = ntpClient.getMinutes();
   String formattedMinutes = (minutes < 10) ? "0" + String(minutes) : String(minutes);
   display.print(formattedMinutes);
-  const unsigned char *trend_sym = Trend_to_image(Home_values.trend_Symbol);
-  vTaskDelay(pdMS_TO_TICKS(10));
-  // const char* trend_char = Home_values.trend_Symbol;
-  display.drawBitmap(SCREEN_WIDTH - 25, 0, trend_sym, 24, 24, WHITE);
-  // Trend_to_image(Home_values.trend_Symbol);
+  //const unsigned char *trend_sym = Trend_to_image(Home_values.trend_Symbol);
+  display.drawBitmap(SCREEN_WIDTH - 25, 0, Trend_to_image(Home_values.trend_Symbol), 24, 24, WHITE);
   display.display();
   return;
 }
 
-// const int numdatapointsY = 10;
-// float datapointsY[numdatapointsY] = {0.5, 0.8, 0.3, 0.6, 0.9, 0.7, 0.4, 0.2, 0.1, 0.5}; // Sample data
 
 void Graph_Display()
 {
@@ -495,7 +483,12 @@ void Graph_Display()
       int x = int((datapointsX[i] - XMin) * (SCREEN_WIDTH - 1) / (XMax - XMin));
       int y = int(yScale * (1 - (datapointsY[i] - YMin) / (YMax - YMin)));
       display.drawPixel(x, y, SSD1306_WHITE);
-      display.drawRect(x - 1, y - 1, 3, 3, SSD1306_WHITE);
+      display.drawPixel(x-1, y, SSD1306_WHITE);
+      display.drawPixel(x+1, y, SSD1306_WHITE);
+      display.drawPixel(x, y-1, SSD1306_WHITE);
+      display.drawPixel(x, y+1, SSD1306_WHITE);
+
+      //display.drawRect(x - 1, y - 1, 3, 3, SSD1306_WHITE);
     }
   }
 
