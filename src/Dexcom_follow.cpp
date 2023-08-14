@@ -332,8 +332,8 @@ void Follower::parseAndStoreData(String jsonString)
         GlucoseArray[index].mmol_l = GlucoseArray[index].mg_dl * 0.0555; // Convert to mmol/L
         GlucoseArray[index].trend_description = obj["Trend"].as<const char *>();
         GlucoseArray[index].trend_Symbol = obj["Trend"].as<const char *>();
-        Serial.println(GlucoseArray[index].mmol_l);
-        Serial.println(GlucoseArray[index].timestamp);
+        //Serial.println(GlucoseArray[index].mmol_l);
+        //Serial.println(GlucoseArray[index].timestamp);
 
         index++;
     }

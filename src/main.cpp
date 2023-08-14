@@ -37,7 +37,7 @@ int timeout = 120;
 #define TRIGGER_AP_PIN 0
 bool Launch_AP = false;
 
-int Hours_Shown_On_Graph = 2;
+int Hours_Shown_On_Graph = 3;
 
 // Buttons
 #define TOGGLE_DISPLAY_PIN 12
@@ -359,10 +359,9 @@ void Access_point()
   return;
 }
 
-const unsigned char *Trend_to_image( const char *trend_char)
+const unsigned char *Trend_to_image(const char *trend_char)
 {
-  
-  if (strcmp(trend_char, "") == 0)
+  if (trend_char == nullptr)
   {
     return arrowsdash;
   }
@@ -424,12 +423,12 @@ void Homescreen_display()
   char glucoseStr[10];                           // Allocate a buffer for the formatted string
   dtostrf(Home_values.mmol_l, 2, 1, glucoseStr); // Format: total width = 4, 1 decimal place
 
-  display.print(glucoseStr);
+  display.println(glucoseStr);
   // display.print(" ");
-  display.setTextSize(3);
-  display.print(Home_values.trend_Symbol);
-  display.setTextSize(4);
-  display.println("");
+  //display.setTextSize(3);
+  //display.print(Home_values.trend_Symbol);
+  //display.setTextSize(4);
+  //display.println("");
   // display.setCursor(0,40);
   display.setTextSize(1);
   int offset2 = display.getCursorY();
@@ -445,12 +444,11 @@ void Homescreen_display()
   int minutes = ntpClient.getMinutes();
   String formattedMinutes = (minutes < 10) ? "0" + String(minutes) : String(minutes);
   display.print(formattedMinutes);
-  const unsigned char *trend_sym;
+  const unsigned char *trend_sym = Trend_to_image(Home_values.trend_Symbol);
   vTaskDelay(pdMS_TO_TICKS(10));
-  const char* trend_char = Home_values.trend_Symbol;
-  //display.drawBitmap(SCREEN_WIDTH - 25, 0, trend_sym, 24, 24, WHITE);
-  
-  //Trend_to_image(Home_values.trend_Symbol);
+  // const char* trend_char = Home_values.trend_Symbol;
+  display.drawBitmap(SCREEN_WIDTH - 25, 0, trend_sym, 24, 24, WHITE);
+  // Trend_to_image(Home_values.trend_Symbol);
   display.display();
   return;
 }
@@ -719,10 +717,10 @@ void setup()
 
   // Create and start the glucose update task
   // xTaskCreatePinnedToCore(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 1, NULL, 0);
-  //xTaskCreatePinnedToCore(glucoseUpdateTask, "GlucoseUpdateTask", 10000, NULL, 1, NULL, 0);
-  //xTaskCreatePinnedToCore(StateLoopTask, "StateLoop", 60000, NULL, 2, NULL, 1);
+  // xTaskCreatePinnedToCore(glucoseUpdateTask, "GlucoseUpdateTask", 10000, NULL, 1, NULL, 0);
+  // xTaskCreatePinnedToCore(StateLoopTask, "StateLoop", 60000, NULL, 2, NULL, 1);
   xTaskCreate(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 2, NULL);
-  xTaskCreate(StateLoopTask, "StateLoop", 8192, NULL, 1, NULL);
+  xTaskCreate(StateLoopTask, "StateLoop", 2000, NULL, 1, NULL);
 
   // vTaskStartScheduler();
 }
