@@ -23,7 +23,8 @@ If you wish to launch the Access point manually and change credentials, you can 
 
 It is dependant on the Wifimanager library.  All dependencies can be seen in platformio.ini
 
-![Alt text](platformio.ini)
+![Alt text](images/main_screen_example1.png)
+![Alt text](images/graph_example1.png)
 
 # Background
 I'm a dad to a son with T1 Diabetes.  I wanted to explore the possibility of connecting to the dexcom follow API from low cost hardware.
