@@ -13,6 +13,7 @@
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
 #include "structs_include.h"
+#include "RGBLED.h"
 
 #include <NTPClient.h>
 #include <WiFiUdp.h>
@@ -34,13 +35,20 @@ bool just_wait = false;
 // Define WiFiManager Object
 WiFiManager wm;
 int timeout = 120;
-#define TRIGGER_AP_PIN 0
+
+#define R_PIN 17
+#define G_PIN 5
+#define B_PIN 16
+
+RGBLED rgb(R_PIN, G_PIN, B_PIN);
+
+#define TRIGGER_AP_PIN 4
 bool Launch_AP = false;
 
 int Hours_Shown_On_Graph = 3;
 
 // Buttons
-#define TOGGLE_DISPLAY_PIN 12
+#define TOGGLE_DISPLAY_PIN 14
 bool Next_screen = false;
 
 #define SCREEN_WIDTH 128
@@ -267,6 +275,7 @@ void IRAM_ATTR APintHandler()
 
 void IRAM_ATTR DisplayPinHandler()
 {
+
   Next_screen = true;
 }
 
@@ -400,6 +409,27 @@ const unsigned char *Trend_to_image(const char *trend_char)
   }
 }
 
+void Alarm_handler(void *pvParameters){
+  while(true){
+    if(Home_values.mmol_l> 10.0 && Home_values.mmol_l< 13.3){
+      rgb.setColor(COLOR_YELLOW_DIMMEST);
+    }
+    else if(Home_values.mmol_l>= 13.3){
+      rgb.setColor(COLOR_RED_DIMMEST);
+    }
+    else if(Home_values.mmol_l<= 4.19 && Home_values.mmol_l> 3.9){
+      rgb.setColor(COLOR_PURPLE_DIMMEST);
+    }
+    else if(Home_values.mmol_l<= 3.9){
+      rgb.setColor(COLOR_RED_DIMMEST);
+    }
+    else {
+      rgb.turnOff();
+    }
+    vTaskDelay(pdMS_TO_TICKS(300));
+  }
+}
+
 void Homescreen_display()
 {
   unsigned long currentTime = ntpClient.getEpochTime();
@@ -416,7 +446,11 @@ void Homescreen_display()
   char glucoseStr[10];                           // Allocate a buffer for the formatted string
   dtostrf(Home_values.mmol_l, 2, 1, glucoseStr); // Format: total width = 4, 1 decimal place
 
-  display.println(glucoseStr);
+  display.print(glucoseStr);
+  int offset1 = display.getCursorX();
+  display.println();
+
+  
   // display.print(" ");  // using custom symbols instead of this code
   //display.setTextSize(3);
   //display.print(Home_values.trend_Symbol);
@@ -425,6 +459,14 @@ void Homescreen_display()
   // display.setCursor(0,40);
   display.setTextSize(1);
   int offset2 = display.getCursorY();
+
+  if (time_since_last> 10){
+    display.drawFastHLine(0,offset2/2,offset1,WHITE);
+    display.drawFastVLine(offset1/2,0,offset2,WHITE);
+    display.drawLine(0,0,offset1,offset2,WHITE);
+    display.drawLine(0,offset2,offset1,0,WHITE);
+  }
+  
   display.println(Home_values.message_1);
   display.setTextSize(1);
   display.println(Home_values.message_2);
@@ -543,7 +585,7 @@ void StateLoopTask(void *pvParameters)
     case State::Home_screen:
       if (Next_screen)
       {
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(100));
         Next_screen = false;
         currentState = State::Graph;
         break;
@@ -553,7 +595,7 @@ void StateLoopTask(void *pvParameters)
     case State::Graph:
       if (Next_screen)
       {
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(100));
         Next_screen = false;
         currentState = State::Home_screen;
         break;
@@ -584,6 +626,9 @@ void setup()
   Serial.begin(115200);
 
   Wire.begin();
+
+  //rgb
+  rgb.setColor(COLOR_PURPLE_DIM); //RED
 
   // Buttons
   // AP manual trigger
@@ -619,8 +664,6 @@ void setup()
   // Explicitly set WiFi mode
   WiFi.mode(WIFI_STA);
 
-  // Setup Serial monitor
-  Serial.begin(115200);
   delay(10);
 
   // Reset settings (only for development)
@@ -636,6 +679,8 @@ void setup()
   wm.addParameter(&Dexcom_Username);
   wm.addParameter(&Dexcom_Password);
 
+  //rgb
+  rgb.setColor(COLOR_BLUE_DIM); //Blue
   if (forceConfig)
   // Run if we need a configuration
   {
@@ -707,6 +752,7 @@ void setup()
     currentState = State::Home_screen;
   }
   follower.GlucoseLevelsArrayPopulate();
+  //rgb.setColor(COLOR_YELLOW_DIM); //Yellow
 
   // Create and start the glucose update task
   // xTaskCreatePinnedToCore(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 1, NULL, 0);
@@ -714,6 +760,7 @@ void setup()
   // xTaskCreatePinnedToCore(StateLoopTask, "StateLoop", 60000, NULL, 2, NULL, 1);
   xTaskCreate(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 2, NULL);
   xTaskCreate(StateLoopTask, "StateLoop", 2000, NULL, 1, NULL);
+  xTaskCreate(Alarm_handler, "Alarm_handler", 815, NULL, 3, NULL);
 
   // vTaskStartScheduler();
 }
