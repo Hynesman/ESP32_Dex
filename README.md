@@ -34,4 +34,10 @@ I will when possible push updates as they come and work on improving the Dexcom 
 
 let me know if you've put it to good use or you have spotted a flaw.
 
+# Note
+
+This is a work in progress still.  I roll updates out as i add functionality so keep an eye on the project.  
+
+22.08.23 -recently i have added basic support for LED status lights
+
  
