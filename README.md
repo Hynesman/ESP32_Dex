@@ -40,4 +40,12 @@ This is a work in progress still.  I roll updates out as i add functionality so 
 
 22.08.23 -recently i have added basic support for LED status lights
 
- 
+08.11.23 -  Lots happened since i last pushed here
+- I have printed a custom PCB
+- I have added a bit more functionality
+- I have printed a housing for my board.
+
+![Alt text](custom_board.jpg)
+![Alt text](Box1.jpg)
+![Alt text](Box2.jpg)
+
