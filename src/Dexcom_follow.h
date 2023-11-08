@@ -14,7 +14,7 @@ extern const char* DEXCOM_BASE_URL;
 extern const char* DEXCOM_BASE_URL_OUS;
 extern String applicationId;
 
-#define CASHED_READINGS 36
+#define CASHED_READINGS 72
 
 // GlucoseReading structure
 struct GlucoseReading
@@ -40,6 +40,9 @@ public:
     bool SessionIDnotDefault();
     bool GlucoseLevelsArrayPopulate();
     GlucoseReading GlucoseArray[CASHED_READINGS];
+    int TZ_minutes;
+    int TZ_hours;
+    int TZ_offset; //timezone offset in total in seconds.  used also for checking daylight savings. :-)
 
 private:
     String DexcomServer;

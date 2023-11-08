@@ -1,0 +1,8 @@
+note til self.
+
+on custom boards from china the efuse needs to be set
+This is done with esptool like this:
+
+espefuse --port COM9 set_flash_voltage 3.3V
+
+This is a non reversable process but will enable flashing.

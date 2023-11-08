@@ -15,6 +15,20 @@
 #include "structs_include.h"
 #include "RGBLED.h"
 
+#include <melody_player.h>
+#include <melody_factory.h>
+#include "sounds.h"
+#define BUZZZER_PIN 18
+MelodyPlayer player(BUZZZER_PIN, 3, LOW);
+
+bool AlarmsEnable = true;
+bool Snoozing = false;
+// int Snoozetime = 15; // minutes
+double LowLowAlarm = 3.9;
+double LowAlarm = 4.01;
+double HighAlarm = 10.0;
+double HighHighAlarm = 13.3;
+
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
@@ -37,8 +51,8 @@ WiFiManager wm;
 int timeout = 120;
 
 #define R_PIN 17
-#define G_PIN 5
-#define B_PIN 16
+#define G_PIN 16
+#define B_PIN 5
 
 RGBLED rgb(R_PIN, G_PIN, B_PIN);
 
@@ -46,9 +60,21 @@ RGBLED rgb(R_PIN, G_PIN, B_PIN);
 bool Launch_AP = false;
 
 int Hours_Shown_On_Graph = 3;
+#define MAX_HOURS 24
+#define MIN_HOURS 1
 
 // Buttons
-#define TOGGLE_DISPLAY_PIN 14
+#define SELECT_PIN 14
+#define BACK_PIN 12
+#define RIGHT_PIN 33
+#define LEFT_PIN 25
+#define UP_PIN 27
+#define DOWN_PIN 26
+#define SNOOZE_PIN_PLUS 19
+#define SNOOZE_PIN_MINUS 23
+#define DEBOUNCE_DELAY 150
+
+Button buttons = Button::NOTHING;
 bool Next_screen = false;
 
 #define SCREEN_WIDTH 128
@@ -57,7 +83,7 @@ bool Next_screen = false;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-const int NTP_UTC_OFFSET = 2 * 60 * 60; // Replace with your UTC offset in seconds
+const int NTP_UTC_OFFSET = 0; // Replace with your UTC offset in seconds
 const char *NTP_SERVER = "pool.ntp.org";
 const long NTP_UPDATE_INTERVAL = 60 * 1000; // Update NTP time every 60 seconds
 
@@ -75,6 +101,9 @@ int error_count = 0;
 State currentState = State::Home_screen;
 
 Homescreen_values Home_values;
+
+unsigned long SnoozeEndTime = 0;
+const unsigned long SnoozeDuration = 5 * 60 * 1000; // min Snooze duration in milliseconds (e.g., 5 minutes)
 
 void saveConfigFile()
 // Save Config in JSON format
@@ -200,6 +229,15 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         unsigned long currentTime = ntpClient.getEpochTime();
         delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
 
+        //daylight savings check
+        if (delay_time < -60*60+1 || delay_time > 60*60-1)
+        {
+          ntpClient.setTimeOffset(follower.TZ_offset);
+          unsigned long currentTime = ntpClient.getEpochTime();
+          delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
+
+        }
+
         if (delay_time < 0 && delay_time > -25)
         {
           delay_time = 2;
@@ -273,10 +311,59 @@ void IRAM_ATTR APintHandler()
   currentState = State::Launch_AP;
 }
 
-void IRAM_ATTR DisplayPinHandler()
+void IRAM_ATTR RightPinHandler()
+{
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::RIGHT;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
+}
+
+void IRAM_ATTR SnoozeHandler()
+{
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::SNOOZE_PLUS;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
+}
+
+void IRAM_ATTR SnoozeHandler_Minus()
+{
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::SNOOZE_MINUS;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
+}
+
+void IRAM_ATTR LeftPinHandler()
+{
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::LEFT;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
+}
+
+void IRAM_ATTR UpPinHandler()
 {
 
-  Next_screen = true;
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::UP;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
+}
+
+void IRAM_ATTR DownPinHandler()
+{
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::DOWN;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
 }
 
 void Access_point()
@@ -321,13 +408,13 @@ void Access_point()
 
     // Copy the string value
     strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
-    //Serial.print("D_User: ");
-    //Serial.println(D_User);
+    // Serial.print("D_User: ");
+    // Serial.println(D_User);
 
     // Copy the string value
     strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
-    //Serial.print("D_User: ");
-    //Serial.println(D_Pass);
+    // Serial.print("D_User: ");
+    // Serial.println(D_Pass);
 
     follower.Set_user_pass(D_User, D_Pass);
     follower.getNewSessionID();
@@ -409,24 +496,151 @@ const unsigned char *Trend_to_image(const char *trend_char)
   }
 }
 
-void Alarm_handler(void *pvParameters){
-  while(true){
-    if(Home_values.mmol_l> 10.0 && Home_values.mmol_l< 13.3){
-      rgb.setColor(COLOR_YELLOW_DIMMEST);
+void normal_mode()
+{
+  if (Home_values.mmol_l > HighAlarm && Home_values.mmol_l < HighHighAlarm)
+  {
+    rgb.setColor(COLOR_YELLOW_DIMMEST);
+  }
+  else if (Home_values.mmol_l >= HighHighAlarm)
+  {
+    rgb.setColor(COLOR_RED_DIMMEST);
+  }
+  else if (Home_values.mmol_l <= LowAlarm && Home_values.mmol_l > LowLowAlarm)
+  {
+    rgb.setColor(COLOR_PURPLE_DIMMEST);
+  }
+  else if (Home_values.mmol_l <= LowAlarm)
+  {
+    rgb.setColor(COLOR_RED_DIMMEST);
+  }
+  else
+  {
+    rgb.turnOff();
+  }
+}
+
+void High_Lights()
+{
+  if (Home_values.mmol_l > HighAlarm && Home_values.mmol_l < HighHighAlarm)
+  {
+    rgb.setColor(COLOR_YELLOW);
+    if (!player.isPlaying())
+          {
+            player.playAsync(melody4);
+          }
+  }
+  else if (Home_values.mmol_l >= HighHighAlarm)
+  {
+    rgb.setColor(COLOR_RED);
+    if (!player.isPlaying())
+          {
+            player.playAsync(melody4);
+          }
+  }
+  else if (Home_values.mmol_l <= LowAlarm && Home_values.mmol_l > LowLowAlarm)
+  {
+    rgb.setColor(COLOR_PURPLE);
+    if (!player.isPlaying())
+          {
+            player.playAsync(melody4);
+          }
+  }
+  else if (Home_values.mmol_l <= LowAlarm)
+  {
+    rgb.setColor(COLOR_RED);
+    if (!player.isPlaying())
+          {
+            player.playAsync(melody4);
+          }
+  }
+  else
+  {
+    rgb.turnOff();
+    if (player.isPlaying())
+          {
+            player.stop();
+          }
+  }
+}
+
+
+
+void Alarm_handler(void *pvParameters)
+{
+  bool blinkbool = true;
+  int count = 0;
+  while (true)
+  {
+    if (!AlarmsEnable)
+    {
+      normal_mode();
     }
-    else if(Home_values.mmol_l>= 13.3){
-      rgb.setColor(COLOR_RED_DIMMEST);
+    else
+    {
+      if (Snoozing)
+      {
+        normal_mode();
+        if (player.isPlaying())
+          {
+            player.stop();
+          }
+      }
+      else
+      {
+        if (blinkbool)
+        {
+          High_Lights();
+        }
+        else
+        {
+          normal_mode();
+
+        }
+        if (count >= 1)
+        {
+          blinkbool = !blinkbool;
+          count = 0;
+        }
+        else
+        {
+          count++;
+        }
+      }
     }
-    else if(Home_values.mmol_l<= 4.19 && Home_values.mmol_l> 3.9){
-      rgb.setColor(COLOR_PURPLE_DIMMEST);
+
+    // Check for button signal to activate snooze
+    if (buttons == Button::SNOOZE_PLUS) // Implement this function to detect button press
+    {
+      buttons = Button::NOTHING;
+      if (Snoozing)
+      {
+        SnoozeEndTime += SnoozeDuration;
+      }
+      else
+      {
+        Snoozing = true;
+        SnoozeEndTime = millis() + SnoozeDuration;
+      }
     }
-    else if(Home_values.mmol_l<= 3.9){
-      rgb.setColor(COLOR_RED_DIMMEST);
+    else if (buttons == Button::SNOOZE_MINUS){
+      buttons = Button::NOTHING;
+      if (Snoozing){
+        SnoozeEndTime -= SnoozeDuration;
+        if (SnoozeEndTime < millis()){
+          Snoozing = false;
+        }
+      }
     }
-    else {
-      rgb.turnOff();
+
+    // Check if snooze timer has expired
+    if (Snoozing && millis() >= SnoozeEndTime)
+    {
+      Snoozing = false;
+      SnoozeEndTime = 0;
     }
-    vTaskDelay(pdMS_TO_TICKS(300));
+
+    vTaskDelay(pdMS_TO_TICKS(250));
   }
 }
 
@@ -450,25 +664,35 @@ void Homescreen_display()
   int offset1 = display.getCursorX();
   display.println();
 
-  
   // display.print(" ");  // using custom symbols instead of this code
-  //display.setTextSize(3);
-  //display.print(Home_values.trend_Symbol);
-  //display.setTextSize(4);
-  //display.println("");
+  // display.setTextSize(3);
+  // display.print(Home_values.trend_Symbol);
+  // display.setTextSize(4);
+  // display.println("");
   // display.setCursor(0,40);
   display.setTextSize(1);
   int offset2 = display.getCursorY();
 
-  if (time_since_last> 10){
-    display.drawFastHLine(0,offset2/2,offset1,WHITE);
-    display.drawFastVLine(offset1/2,0,offset2,WHITE);
-    display.drawLine(0,0,offset1,offset2,WHITE);
-    display.drawLine(0,offset2,offset1,0,WHITE);
+  if (time_since_last > 10)
+  {
+    display.drawFastHLine(0, offset2 / 2, offset1, WHITE);
+    display.drawFastVLine(offset1 / 2, 0, offset2, WHITE);
+    display.drawLine(0, 0, offset1, offset2, WHITE);
+    display.drawLine(0, offset2, offset1, 0, WHITE);
   }
-  
+
   display.println(Home_values.message_1);
-  display.setTextSize(1);
+  display.setTextSize(2);
+  String somemessage = "";
+  if (Snoozing)
+  {
+    somemessage = String((int)((SnoozeEndTime - millis()) / (1000 * 60)) + 1) + " min Szz";
+    Home_values.message_2 = somemessage.c_str();
+  }
+  else
+  {
+    Home_values.message_2 = "";
+  }
   display.println(Home_values.message_2);
   display.setCursor(128 / 2, offset2);
   display.setTextSize(2);
@@ -479,12 +703,54 @@ void Homescreen_display()
   int minutes = ntpClient.getMinutes();
   String formattedMinutes = (minutes < 10) ? "0" + String(minutes) : String(minutes);
   display.print(formattedMinutes);
-  //const unsigned char *trend_sym = Trend_to_image(Home_values.trend_Symbol);
+  // const unsigned char *trend_sym = Trend_to_image(Home_values.trend_Symbol);
   display.drawBitmap(SCREEN_WIDTH - 25, 0, Trend_to_image(Home_values.trend_Symbol), 24, 24, WHITE);
   display.display();
   return;
 }
 
+void Settings()
+{
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Settings");
+  display.display();
+}
+
+unsigned int selectedMenuItem = 0;
+const int numMenuItems = 5;
+const char *menuItems[numMenuItems] = {"Settings", "Item 1", "Item 2", "Item 3", "Item 4"};
+
+void displayMenu(unsigned int selectedItem)
+{
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+
+  for (int i = 0; i < 4; i++)
+  {
+    if ((selectedItem + i) < numMenuItems)
+    {
+      int item = (selectedItem + i) % numMenuItems;
+      if (item == selectedItem)
+      {
+        display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Highlight selected item
+      }
+      else
+      {
+        display.setTextColor(SSD1306_WHITE);
+      }
+
+      // display.setCursor(0, i * 16);
+      display.println(menuItems[item]);
+    }
+  }
+
+  display.display();
+}
 
 void Graph_Display()
 {
@@ -525,12 +791,12 @@ void Graph_Display()
       int x = int((datapointsX[i] - XMin) * (SCREEN_WIDTH - 1) / (XMax - XMin));
       int y = int(yScale * (1 - (datapointsY[i] - YMin) / (YMax - YMin)));
       display.drawPixel(x, y, SSD1306_WHITE);
-      display.drawPixel(x-1, y, SSD1306_WHITE);
-      display.drawPixel(x+1, y, SSD1306_WHITE);
-      display.drawPixel(x, y-1, SSD1306_WHITE);
-      display.drawPixel(x, y+1, SSD1306_WHITE);
+      display.drawPixel(x - 1, y, SSD1306_WHITE);
+      display.drawPixel(x + 1, y, SSD1306_WHITE);
+      display.drawPixel(x, y - 1, SSD1306_WHITE);
+      display.drawPixel(x, y + 1, SSD1306_WHITE);
 
-      //display.drawRect(x - 1, y - 1, 3, 3, SSD1306_WHITE);
+      // display.drawRect(x - 1, y - 1, 3, 3, SSD1306_WHITE);
     }
   }
 
@@ -575,6 +841,7 @@ void Graph_Display()
 
 void StateLoopTask(void *pvParameters)
 {
+
   while (true)
   {
     switch (currentState)
@@ -583,31 +850,98 @@ void StateLoopTask(void *pvParameters)
       Access_point();
       break;
     case State::Home_screen:
-      if (Next_screen)
+
+      if (buttons == Button::RIGHT)
       {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        Next_screen = false;
+        vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_DELAY));
+        buttons = Button::NOTHING;
         currentState = State::Graph;
         break;
+      }
+      else if (buttons == Button::LEFT)
+      {
+        vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_DELAY));
+        buttons = Button::NOTHING;
+        currentState = State::Settings;
+        break;
+      }
+      else if (buttons == Button::UP)
+      {
+        SnoozeEndTime += 5 * 60 * 1000;
+        buttons = Button::NOTHING;
+      }
+      else if (buttons == Button::DOWN)
+      {
+        unsigned long newSnoozeEndTime = SnoozeEndTime - 5 * 60 * 1000;
+        if (newSnoozeEndTime < millis()){
+          SnoozeEndTime = millis();
+          Snoozing = false;
+        }
+        else{
+          SnoozeEndTime = newSnoozeEndTime;
+        }
+        buttons = Button::NOTHING;
       }
       Homescreen_display();
       break;
     case State::Graph:
-      if (Next_screen)
+
+      if (buttons == Button::RIGHT)
       {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        Next_screen = false;
+        vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_DELAY));
+        buttons = Button::NOTHING;
+        currentState = State::Settings;
+        break;
+      }
+      else if (buttons == Button::LEFT)
+      {
+        vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_DELAY));
+        buttons = Button::NOTHING;
         currentState = State::Home_screen;
         break;
+      }
+      else if (buttons == Button::DOWN)
+      {
+        if (Hours_Shown_On_Graph > MIN_HOURS)
+        {
+          Hours_Shown_On_Graph = (Hours_Shown_On_Graph - 1) % MAX_HOURS;
+        }
+        buttons = Button::NOTHING;
+      }
+      else if (buttons == Button::UP)
+      {
+        Hours_Shown_On_Graph = (Hours_Shown_On_Graph + 1) % MAX_HOURS;
+        buttons = Button::NOTHING;
       }
       Graph_Display();
       // stateFunction3();
       break;
-    case State::HighAlarm:
-      // stateFunction4();
-      break;
-    case State::LowAlarm:
-      // stateFunction5();
+    case State::Settings:
+      if (buttons == Button::RIGHT)
+      {
+        buttons = Button::NOTHING;
+        currentState = State::Home_screen;
+        break;
+      }
+      else if (buttons == Button::LEFT)
+      {
+        buttons = Button::NOTHING;
+        currentState = State::Graph;
+        break;
+      }
+      else if (buttons == Button::DOWN)
+      {
+        selectedMenuItem = (selectedMenuItem + 1) % numMenuItems;
+        buttons = Button::NOTHING;
+      }
+      else if (buttons == Button::UP)
+      {
+        selectedMenuItem = (selectedMenuItem - 1) % numMenuItems;
+        buttons = Button::NOTHING;
+      }
+      displayMenu(selectedMenuItem);
+      // Settings();
+      //  stateFunction4();
       break;
     case State::Info:
       // stateFunction5();
@@ -617,7 +951,7 @@ void StateLoopTask(void *pvParameters)
       Serial.println("Invalid state encountered");
       break;
     }
-    vTaskDelay(pdMS_TO_TICKS(300));
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -627,16 +961,32 @@ void setup()
 
   Wire.begin();
 
-  //rgb
-  rgb.setColor(COLOR_PURPLE_DIM); //RED
-
+  // rgb
+  rgb.setColor(COLOR_PURPLE_DIM); // RED
+  //player.playAsync(lowToneBeepMelody);
   // Buttons
   // AP manual trigger
   pinMode(TRIGGER_AP_PIN, INPUT);
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
+
+  pinMode(SELECT_PIN, INPUT);
+  //attachInterrupt(SELECT_PIN, SnoozeHandler, FALLING);
+  pinMode(SNOOZE_PIN_PLUS, INPUT);
+  attachInterrupt(SNOOZE_PIN_PLUS, SnoozeHandler, FALLING);
+  pinMode(SNOOZE_PIN_MINUS, INPUT);
+  attachInterrupt(SNOOZE_PIN_MINUS, SnoozeHandler_Minus, FALLING);
   // Display toggle
-  pinMode(TOGGLE_DISPLAY_PIN, INPUT);
-  attachInterrupt(TOGGLE_DISPLAY_PIN, DisplayPinHandler, RISING);
+  pinMode(RIGHT_PIN, INPUT);
+  attachInterrupt(RIGHT_PIN, RightPinHandler, FALLING);
+  pinMode(LEFT_PIN, INPUT);
+  attachInterrupt(LEFT_PIN, LeftPinHandler, FALLING);
+  pinMode(UP_PIN, INPUT);
+  attachInterrupt(UP_PIN, UpPinHandler, FALLING);
+  pinMode(DOWN_PIN, INPUT);
+  attachInterrupt(DOWN_PIN, DownPinHandler, FALLING);
+
+  // Buzzer Test at startup
+  // player.playAsync(melody3);
 
   // Initialize OLED display
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
@@ -660,11 +1010,12 @@ void setup()
     Serial.println(F("Forcing config mode as there is no saved config"));
     forceConfig = true;
   }
+  // player.playAsync(yourMelody);
 
   // Explicitly set WiFi mode
   WiFi.mode(WIFI_STA);
 
-  delay(10);
+  delay(5000);
 
   // Reset settings (only for development)
   // wm.resetSettings();
@@ -679,8 +1030,8 @@ void setup()
   wm.addParameter(&Dexcom_Username);
   wm.addParameter(&Dexcom_Password);
 
-  //rgb
-  rgb.setColor(COLOR_BLUE_DIM); //Blue
+  // rgb
+  rgb.setColor(COLOR_BLUE_DIM); // Blue
   if (forceConfig)
   // Run if we need a configuration
   {
@@ -752,21 +1103,22 @@ void setup()
     currentState = State::Home_screen;
   }
   follower.GlucoseLevelsArrayPopulate();
-  //rgb.setColor(COLOR_YELLOW_DIM); //Yellow
+  //ntpClient.setTimeOffset(follower.TZ_offset);
+  //ntpClient.update();
+  // rgb.setColor(COLOR_YELLOW_DIM); //Yellow
 
   // Create and start the glucose update task
-  // xTaskCreatePinnedToCore(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 1, NULL, 0);
-  // xTaskCreatePinnedToCore(glucoseUpdateTask, "GlucoseUpdateTask", 10000, NULL, 1, NULL, 0);
-  // xTaskCreatePinnedToCore(StateLoopTask, "StateLoop", 60000, NULL, 2, NULL, 1);
   xTaskCreate(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 2, NULL);
-  xTaskCreate(StateLoopTask, "StateLoop", 2000, NULL, 1, NULL);
-  xTaskCreate(Alarm_handler, "Alarm_handler", 815, NULL, 3, NULL);
-
-  // vTaskStartScheduler();
+  xTaskCreate(StateLoopTask, "StateLoop", 8192, NULL, 1, NULL);
+  xTaskCreate(Alarm_handler, "Alarm_handler", 8192, NULL, 3, NULL);
 }
 
 void loop()
 {
-
-  vTaskDelay(pdMS_TO_TICKS(5 * 1000)); // Wait for 5 seconds before making the next request
+  // do nothing in the loop. just loops
+  //player.playAsync(lowToneBeepMelody);
+  while (true)
+  {
+    vTaskDelay(pdMS_TO_TICKS(5 * 1000));
+  }
 }

@@ -240,11 +240,11 @@ unsigned long Follower::convertToUnixTimestamp(const char *dtValue)
         unsigned long timestamp = atol(timestampStr);
 
         // Get the time zone offset in hours and minutes
-        int tzHours, tzMinutes;
-        sscanf(offset + 3, "+%2d%2d", &tzHours, &tzMinutes);
+        sscanf(offset + 3, "+%2d%2d", &TZ_hours, &TZ_minutes);
+        TZ_offset = TZ_hours*60*60 + TZ_minutes*60;
 
         // Convert the offset to seconds and adjust the timestamp
-        unsigned long offsetSeconds = tzHours * 60 * 60 + tzMinutes * 60;
+        unsigned long offsetSeconds = TZ_hours * 60 * 60 + TZ_minutes * 60;
         timestamp += offsetSeconds;
 
         return timestamp; // Convert microseconds to seconds
