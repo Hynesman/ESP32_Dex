@@ -24,10 +24,7 @@ MelodyPlayer player(BUZZZER_PIN, 3, LOW);
 bool AlarmsEnable = true;
 bool Snoozing = false;
 // int Snoozetime = 15; // minutes
-double LowLowAlarm = 3.9;
-double LowAlarm = 4.01;
-double HighAlarm = 10.0;
-double HighHighAlarm = 13.3;
+
 
 #include <NTPClient.h>
 #include <WiFiUdp.h>
@@ -41,9 +38,26 @@ bool shouldSaveConfig = false;
 // Variables to hold data from custom textboxes
 char D_User[50] = "username";
 char D_Pass[50] = "password";
+
+ALARMS alarms;
+
+double LowLowAlarm = 3.9;
+double LowAlarm = 4.01;
+double HighAlarm = 10.0;
+double HighHighAlarm = 13.3;
+
+#define DOUBLE_STRING_SIZE 10
+// Convert double to string
+char buffer[DOUBLE_STRING_SIZE];
+
 // Text box (String) - 50 characters maximum
 WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom username", D_User, 50);
 WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Username", D_Pass, 50);
+// Text boxes for double values
+WiFiManagerParameter LOWLOW_ALARM("LOWLOW_ALARM", "LOW LOW ALARM", dtostrf(LowLowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+WiFiManagerParameter LOW_ALARM("LOW_ALARM", "LOW ALARM", dtostrf(LowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+WiFiManagerParameter HIGH_ALARM("HIGH_ALARM", "HIGH ALARM", dtostrf(HighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+WiFiManagerParameter HIGHHIGH_ALARM("HIGHHIGH_ALARM", "HIGH HIGH ALARM", dtostrf(HighHighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
 
 bool just_wait = false;
 // Define WiFiManager Object
@@ -105,15 +119,80 @@ Homescreen_values Home_values;
 unsigned long SnoozeEndTime = 0;
 const unsigned long SnoozeDuration = 5 * 60 * 1000; // min Snooze duration in milliseconds (e.g., 5 minutes)
 
+// possible changable values
+double SIGNAL_LOST_MIN = 10.01;
+
+bool Load_from_WM(){
+  strcpy(D_User, Dexcom_Username.getValue());
+  strcpy(D_Pass, Dexcom_Password.getValue());
+
+  // For double values, convert from string to double
+  LowLowAlarm = atof(LOWLOW_ALARM.getValue());
+  LowAlarm = atof(LOW_ALARM.getValue());
+  HighAlarm = atof(HIGH_ALARM.getValue());
+  HighHighAlarm = atof(HIGHHIGH_ALARM.getValue());
+  return true;
+}
+
+String serializeAlarmStruct(const ALARM_STRUCT& alarm) {
+  StaticJsonDocument<256> doc; // Adjust size as needed
+  doc["active"] = alarm.active;
+  doc["continuous"] = alarm.continuous;
+  doc["playsound"] = alarm.playsound;
+  doc["Blink"] = alarm.Blink;
+  doc["high_alarm"] = alarm.high_alarm;
+  doc["level"] = alarm.level;
+  String output;
+  serializeJson(doc, output);
+  return output;
+}
+
+void deserializeAlarmStruct(JsonVariant json, ALARM_STRUCT& alarm) {
+  if (!json.isNull()) {
+    if (json.containsKey("active")) {
+      alarm.active = json["active"];
+    }
+    if (json.containsKey("continuous")) {
+      alarm.continuous = json["continuous"];
+    }
+    if (json.containsKey("playsound")) {
+      alarm.playsound = json["playsound"];
+    }
+    if (json.containsKey("Blink")) {
+      alarm.Blink = json["Blink"];
+    }
+    if (json.containsKey("high_alarm")) {
+      alarm.high_alarm = json["high_alarm"];
+    }
+    if (json.containsKey("level")) {
+      alarm.level = json["level"];
+    }
+  }
+}
+
 void saveConfigFile()
 // Save Config in JSON format
 {
   Serial.println(F("Saving configuration..."));
 
+  char buffer[DOUBLE_STRING_SIZE];
+
   // Create a JSON document
-  StaticJsonDocument<512> json;
+  StaticJsonDocument<1082> json;
   json["D_User"] = D_User;
   json["D_Pass"] = D_Pass;
+  // Store double values as strings in JSON
+  json["LowLowAlarm"] = dtostrf(LowLowAlarm, 1, 2, buffer);
+  json["LowAlarm"] = dtostrf(LowAlarm, 1, 2, buffer);
+  json["HighAlarm"] = dtostrf(HighAlarm, 1, 2, buffer);
+  json["HighHighAlarm"] = dtostrf(HighHighAlarm, 1, 2, buffer);
+
+  // Serialize ALARMS struct
+  JsonObject alarmsJson = json.createNestedObject("alarms");
+  alarmsJson["HIGHHIGHBS"] = serializeAlarmStruct(alarms.HIGHHIGHBS);
+  alarmsJson["HIGHBS"] = serializeAlarmStruct(alarms.HIGHBS);
+  alarmsJson["LOWBS"] = serializeAlarmStruct(alarms.LOWBS);
+  alarmsJson["LOWLOWBS"] = serializeAlarmStruct(alarms.LOWLOWBS);
 
   // Open config file
   File configFile = SPIFFS.open(JSON_CONFIG_FILE, "w");
@@ -138,7 +217,7 @@ bool loadConfigFile()
 // Load existing configuration file
 {
   // Uncomment if we need to format filesystem
-  // SPIFFS.format();
+  //SPIFFS.format();
 
   // Read configuration from FS json
   Serial.println("Mounting File System...");
@@ -155,7 +234,7 @@ bool loadConfigFile()
       if (configFile)
       {
         Serial.println("Opened configuration file");
-        StaticJsonDocument<512> json;
+        StaticJsonDocument<1024> json;
         DeserializationError error = deserializeJson(json, configFile);
         serializeJsonPretty(json, Serial);
         if (!error)
@@ -167,6 +246,18 @@ bool loadConfigFile()
           Dexcom_Username.setValue(D_User, 50);
           Dexcom_Password.setValue(D_Pass, 50);
 
+          LowLowAlarm = atof(json["LowLowAlarm"]);
+          LowAlarm = atof(json["LowAlarm"]);
+          HighAlarm = atof(json["HighAlarm"]);
+          HighHighAlarm = atof(json["HighHighAlarm"]);
+
+          // Load alarm values using a dedicated function
+          deserializeAlarmStruct(json["alarms"]["HIGHHIGHBS"], alarms.HIGHHIGHBS);
+          deserializeAlarmStruct(json["alarms"]["HIGHBS"], alarms.HIGHBS);
+          deserializeAlarmStruct(json["alarms"]["LOWBS"], alarms.LOWBS);
+          deserializeAlarmStruct(json["alarms"]["LOWLOWBS"], alarms.LOWLOWBS);
+
+          configFile.close();
           return true;
         }
         else
@@ -174,6 +265,8 @@ bool loadConfigFile()
           // Error loading JSON data
           Serial.println("Failed to load json config");
         }
+        configFile.close();
+
       }
     }
   }
@@ -191,6 +284,7 @@ void saveConfigCallback()
 {
   Serial.println("Should save config");
   shouldSaveConfig = true;
+  Load_from_WM();
 }
 
 void configModeCallback(WiFiManager *myWiFiManager)
@@ -228,16 +322,24 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         // figure out the delay to the next value
         unsigned long currentTime = ntpClient.getEpochTime();
         delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
+        //update minutes_since for signal_loss notify
+        
 
         //daylight savings check
-        if (delay_time < -60*60+1 || delay_time > 60*60-1)
+        if (delay_time < -60*60+30 || delay_time > 60*60-30)
         {
           ntpClient.setTimeOffset(follower.TZ_offset);
-          unsigned long currentTime = ntpClient.getEpochTime();
+          //Serial.println("setoffset");
+          ntpClient.update();
+          vTaskDelay(pdMS_TO_TICKS(200));  //Little offset for some reason makes this work!!?  I think it gives that ntpClient thread time to work.
+          currentTime = ntpClient.getEpochTime();
           delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
-
         }
 
+        Home_values.minutes_since = (currentTime - follower.GlucoseNow.timestamp)/60.0;  // only updated every check, relative to timestamp
+        Serial.print("\nMinutes since:");
+        Serial.print(Home_values.minutes_since);
+        Serial.print("\n");
         if (delay_time < 0 && delay_time > -25)
         {
           delay_time = 2;
@@ -368,7 +470,7 @@ void IRAM_ATTR DownPinHandler()
 
 void Access_point()
 {
-  vTaskDelay(pdMS_TO_TICKS(1 * 1000));
+  //vTaskDelay(pdMS_TO_TICKS(1 * 1000));
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
@@ -405,16 +507,7 @@ void Access_point()
     Serial.println(WiFi.localIP());
 
     // Lets deal with the user config values
-
-    // Copy the string value
-    strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
-    // Serial.print("D_User: ");
-    // Serial.println(D_User);
-
-    // Copy the string value
-    strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
-    // Serial.print("D_User: ");
-    // Serial.println(D_Pass);
+    Load_from_WM();
 
     follower.Set_user_pass(D_User, D_Pass);
     follower.getNewSessionID();
@@ -498,19 +591,23 @@ const unsigned char *Trend_to_image(const char *trend_char)
 
 void normal_mode()
 {
-  if (Home_values.mmol_l > HighAlarm && Home_values.mmol_l < HighHighAlarm)
+  if (Home_values.minutes_since > SIGNAL_LOST_MIN)
+  {
+    rgb.setColor(COLOR_BLUE_DIMMEST);
+  }
+  else if (Home_values.mmol_l > alarms.HIGHBS.level && Home_values.mmol_l < alarms.HIGHHIGHBS.level)
   {
     rgb.setColor(COLOR_YELLOW_DIMMEST);
   }
-  else if (Home_values.mmol_l >= HighHighAlarm)
+  else if (Home_values.mmol_l >= alarms.HIGHHIGHBS.level)
   {
     rgb.setColor(COLOR_RED_DIMMEST);
   }
-  else if (Home_values.mmol_l <= LowAlarm && Home_values.mmol_l > LowLowAlarm)
+  else if (Home_values.mmol_l <= alarms.LOWBS.level && Home_values.mmol_l > alarms.LOWLOWBS.level)
   {
     rgb.setColor(COLOR_PURPLE_DIMMEST);
   }
-  else if (Home_values.mmol_l <= LowAlarm)
+  else if (Home_values.mmol_l <= alarms.LOWLOWBS.level)
   {
     rgb.setColor(COLOR_RED_DIMMEST);
   }
@@ -518,11 +615,17 @@ void normal_mode()
   {
     rgb.turnOff();
   }
+
 }
 
 void High_Lights()
 {
-  if (Home_values.mmol_l > HighAlarm && Home_values.mmol_l < HighHighAlarm)
+  if (Home_values.minutes_since > SIGNAL_LOST_MIN)
+  {
+    rgb.setColor(COLOR_BLUE);
+    // TODO  Need a sound here.  maybe less persistant
+  }
+  else if (Home_values.mmol_l > alarms.HIGHBS.level && Home_values.mmol_l < alarms.HIGHHIGHBS.level)
   {
     rgb.setColor(COLOR_YELLOW);
     if (!player.isPlaying())
@@ -530,7 +633,7 @@ void High_Lights()
             player.playAsync(melody4);
           }
   }
-  else if (Home_values.mmol_l >= HighHighAlarm)
+  else if (Home_values.mmol_l >= alarms.HIGHHIGHBS.level)
   {
     rgb.setColor(COLOR_RED);
     if (!player.isPlaying())
@@ -538,7 +641,7 @@ void High_Lights()
             player.playAsync(melody4);
           }
   }
-  else if (Home_values.mmol_l <= LowAlarm && Home_values.mmol_l > LowLowAlarm)
+  else if (Home_values.mmol_l <= alarms.LOWBS.level && Home_values.mmol_l > alarms.LOWLOWBS.level)
   {
     rgb.setColor(COLOR_PURPLE);
     if (!player.isPlaying())
@@ -546,7 +649,7 @@ void High_Lights()
             player.playAsync(melody4);
           }
   }
-  else if (Home_values.mmol_l <= LowAlarm)
+  else if (Home_values.mmol_l <= alarms.LOWLOWBS)
   {
     rgb.setColor(COLOR_RED);
     if (!player.isPlaying())
@@ -1010,12 +1113,13 @@ void setup()
     Serial.println(F("Forcing config mode as there is no saved config"));
     forceConfig = true;
   }
+
   // player.playAsync(yourMelody);
 
   // Explicitly set WiFi mode
   WiFi.mode(WIFI_STA);
 
-  delay(5000);
+  //delay(5000);
 
   // Reset settings (only for development)
   // wm.resetSettings();
@@ -1029,6 +1133,10 @@ void setup()
   // Add all defined parameters
   wm.addParameter(&Dexcom_Username);
   wm.addParameter(&Dexcom_Password);
+  wm.addParameter(&LOWLOW_ALARM);
+  wm.addParameter(&LOW_ALARM);
+  wm.addParameter(&HIGH_ALARM);
+  wm.addParameter(&HIGHHIGH_ALARM);
 
   // rgb
   rgb.setColor(COLOR_BLUE_DIM); // Blue
@@ -1065,15 +1173,16 @@ void setup()
 
   // Lets deal with the user config values
 
+  Load_from_WM();
   // Copy the string value
-  strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
-  Serial.print("D_User: ");
-  Serial.println(D_User);
+  //strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
+  //Serial.print("D_User: ");
+  //Serial.println(D_User);
 
   // Convert the number value
-  strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
-  Serial.print("D_Pass: ");
-  Serial.println(D_Pass);
+  //strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
+  //Serial.print("D_Pass: ");
+  //Serial.println(D_Pass);
 
   follower.Set_user_pass(D_User, D_Pass);
   follower.getNewSessionID();

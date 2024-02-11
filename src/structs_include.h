@@ -32,17 +32,33 @@ struct Homescreen_values
     const char *trend_Symbol;
     const char *message_1;
     const char *message_2;
+    double minutes_since= 0.0;
     // Define other members as needed for your application
 };
 
 // Define the possible BG states
 enum class BGState
 {
-    LOWLOWBS,
-    LOWBS,
-    NORMALBS,
+    REALLY_HIGH,
     HIGHBS,
-    HIGHHIGHBS
+    LOWBS,
+    REALLY_LOW
+};
+
+struct ALARM_STRUCT{
+    bool active;
+    bool continuous;
+    bool playsound;
+    bool Blink;
+    bool high_alarm;
+    double level;
+};
+
+struct ALARMS {
+    ALARM_STRUCT HIGHHIGHBS{true, true, true, true, true, 13.3}; // Example defaults
+    ALARM_STRUCT HIGHBS{true, true, true, true, true, 10.0};   // Additional examples
+    ALARM_STRUCT LOWBS{true, true, true, true, false, 3.99};   // You can adjust these
+    ALARM_STRUCT LOWLOWBS{true, true, true, true, false, 3.3};  // as needed
 };
 struct Status {
         bool missed_values;
