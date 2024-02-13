@@ -18,6 +18,7 @@ enum class Button
     LEFT,
     RIGHT,
     SELECT,
+    BACK,
     SNOOZE_PLUS,
     SNOOZE_MINUS
 };
@@ -46,6 +47,7 @@ enum class BGState
 };
 
 struct ALARM_STRUCT{
+    String name;
     bool active;
     bool continuous;
     bool playsound;
@@ -55,10 +57,19 @@ struct ALARM_STRUCT{
 };
 
 struct ALARMS {
-    ALARM_STRUCT HIGHHIGHBS{true, true, true, true, true, 13.3}; // Example defaults
-    ALARM_STRUCT HIGHBS{true, true, true, true, true, 10.0};   // Additional examples
-    ALARM_STRUCT LOWBS{true, true, true, true, false, 3.99};   // You can adjust these
-    ALARM_STRUCT LOWLOWBS{true, true, true, true, false, 3.3};  // as needed
+    ALARM_STRUCT HIGHHIGHBS{"ReallyHigh",true, true, true, true, true, 13.3}; // Example defaults
+    ALARM_STRUCT HIGHBS{"High",true, true, true, true, true, 10.0};   // Additional examples
+    ALARM_STRUCT LOWBS{"Low",true, true, true, true, false, 3.99};   // You can adjust these
+    ALARM_STRUCT LOWLOWBS{"LowLow",true, true, true, true, false, 3.3};  // as needed
+};
+
+struct ALARMSV {
+    std::vector<ALARM_STRUCT> alarms = {
+        {"ReallyHigh", true, true, true, true, true, 13.3},
+        {"High", true, true, true, true, true, 10.0},
+        {"Low", true, true, true, true, false, 3.99},
+        {"LowLow", true, true, true, true, false, 3.3}
+    };
 };
 struct Status {
         bool missed_values;

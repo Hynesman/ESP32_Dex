@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
+#include <Fonts/TomThumb.h>
 #include <Adafruit_SSD1306.h>
 #include "Dexcom_follow.h"
 #include <freertos/FreeRTOS.h>
@@ -25,7 +26,6 @@ bool AlarmsEnable = true;
 bool Snoozing = false;
 // int Snoozetime = 15; // minutes
 
-
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
@@ -39,12 +39,14 @@ bool shouldSaveConfig = false;
 char D_User[50] = "username";
 char D_Pass[50] = "password";
 
-ALARMS alarms;
+// ALARMS alarms;
+ALARMSV alarmsV;
+int numMenuItems = alarmsV.alarms.size();
 
-double LowLowAlarm = 3.9;
-double LowAlarm = 4.01;
-double HighAlarm = 10.0;
-double HighHighAlarm = 13.3;
+// double LowLowAlarm = 3.9;
+// double LowAlarm = 4.01;
+// double HighAlarm = 10.0;
+// double HighHighAlarm = 13.3;
 
 #define DOUBLE_STRING_SIZE 10
 // Convert double to string
@@ -53,11 +55,17 @@ char buffer[DOUBLE_STRING_SIZE];
 // Text box (String) - 50 characters maximum
 WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom username", D_User, 50);
 WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Username", D_Pass, 50);
+std::vector<WiFiManagerParameter *> customParameters;
 // Text boxes for double values
-WiFiManagerParameter LOWLOW_ALARM("LOWLOW_ALARM", "LOW LOW ALARM", dtostrf(LowLowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
-WiFiManagerParameter LOW_ALARM("LOW_ALARM", "LOW ALARM", dtostrf(LowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
-WiFiManagerParameter HIGH_ALARM("HIGH_ALARM", "HIGH ALARM", dtostrf(HighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
-WiFiManagerParameter HIGHHIGH_ALARM("HIGHHIGH_ALARM", "HIGH HIGH ALARM", dtostrf(HighHighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+// WiFiManagerParameter LOWLOW_ALARM("LOWLOW_ALARM", "LOW LOW ALARM", dtostrf(LowLowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+// WiFiManagerParameter LOW_ALARM("LOW_ALARM", "LOW ALARM", dtostrf(LowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+// WiFiManagerParameter HIGH_ALARM("HIGH_ALARM", "HIGH ALARM", dtostrf(HighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+// WiFiManagerParameter HIGHHIGH_ALARM("HIGHHIGH_ALARM", "HIGH HIGH ALARM", dtostrf(HighHighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
+
+WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name.c_str(), alarmsV.alarms[0].name.c_str(), dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
+WiFiManagerParameter HIGH_ALARM(alarmsV.alarms[1].name.c_str(), alarmsV.alarms[1].name.c_str(), dtostrf(alarmsV.alarms[1].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
+WiFiManagerParameter LOW_ALARM(alarmsV.alarms[2].name.c_str(), alarmsV.alarms[2].name.c_str(), dtostrf(alarmsV.alarms[2].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
+WiFiManagerParameter LOWLOW_ALARM(alarmsV.alarms[3].name.c_str(), alarmsV.alarms[3].name.c_str(), dtostrf(alarmsV.alarms[3].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
 
 bool just_wait = false;
 // Define WiFiManager Object
@@ -122,20 +130,28 @@ const unsigned long SnoozeDuration = 5 * 60 * 1000; // min Snooze duration in mi
 // possible changable values
 double SIGNAL_LOST_MIN = 10.01;
 
-bool Load_from_WM(){
+bool Load_from_WM()
+{
   strcpy(D_User, Dexcom_Username.getValue());
   strcpy(D_Pass, Dexcom_Password.getValue());
 
   // For double values, convert from string to double
-  LowLowAlarm = atof(LOWLOW_ALARM.getValue());
-  LowAlarm = atof(LOW_ALARM.getValue());
-  HighAlarm = atof(HIGH_ALARM.getValue());
-  HighHighAlarm = atof(HIGHHIGH_ALARM.getValue());
+  for (u8_t i = 0; i < numMenuItems; i++)
+  {
+    alarmsV.alarms[i].level = atof(customParameters[i]->getValue());
+  }
+
+  // LowLowAlarm = atof(LOWLOW_ALARM.getValue());
+  // LowAlarm = atof(LOW_ALARM.getValue());
+  // HighAlarm = atof(HIGH_ALARM.getValue());
+  // HighHighAlarm = atof(HIGHHIGH_ALARM.getValue());
   return true;
 }
 
-String serializeAlarmStruct(const ALARM_STRUCT& alarm) {
+String serializeAlarmStruct(const ALARM_STRUCT &alarm)
+{
   StaticJsonDocument<256> doc; // Adjust size as needed
+  doc["name"]= alarm.name;
   doc["active"] = alarm.active;
   doc["continuous"] = alarm.continuous;
   doc["playsound"] = alarm.playsound;
@@ -147,28 +163,7 @@ String serializeAlarmStruct(const ALARM_STRUCT& alarm) {
   return output;
 }
 
-void deserializeAlarmStruct(JsonVariant json, ALARM_STRUCT& alarm) {
-  if (!json.isNull()) {
-    if (json.containsKey("active")) {
-      alarm.active = json["active"];
-    }
-    if (json.containsKey("continuous")) {
-      alarm.continuous = json["continuous"];
-    }
-    if (json.containsKey("playsound")) {
-      alarm.playsound = json["playsound"];
-    }
-    if (json.containsKey("Blink")) {
-      alarm.Blink = json["Blink"];
-    }
-    if (json.containsKey("high_alarm")) {
-      alarm.high_alarm = json["high_alarm"];
-    }
-    if (json.containsKey("level")) {
-      alarm.level = json["level"];
-    }
-  }
-}
+
 
 void saveConfigFile()
 // Save Config in JSON format
@@ -182,17 +177,21 @@ void saveConfigFile()
   json["D_User"] = D_User;
   json["D_Pass"] = D_Pass;
   // Store double values as strings in JSON
-  json["LowLowAlarm"] = dtostrf(LowLowAlarm, 1, 2, buffer);
-  json["LowAlarm"] = dtostrf(LowAlarm, 1, 2, buffer);
-  json["HighAlarm"] = dtostrf(HighAlarm, 1, 2, buffer);
-  json["HighHighAlarm"] = dtostrf(HighHighAlarm, 1, 2, buffer);
+  // json["LowLowAlarm"] = dtostrf(LowLowAlarm, 1, 2, buffer);
+  // json["LowAlarm"] = dtostrf(LowAlarm, 1, 2, buffer);
+  // json["HighAlarm"] = dtostrf(HighAlarm, 1, 2, buffer);
+  // json["HighHighAlarm"] = dtostrf(HighHighAlarm, 1, 2, buffer);
 
   // Serialize ALARMS struct
   JsonObject alarmsJson = json.createNestedObject("alarms");
-  alarmsJson["HIGHHIGHBS"] = serializeAlarmStruct(alarms.HIGHHIGHBS);
-  alarmsJson["HIGHBS"] = serializeAlarmStruct(alarms.HIGHBS);
-  alarmsJson["LOWBS"] = serializeAlarmStruct(alarms.LOWBS);
-  alarmsJson["LOWLOWBS"] = serializeAlarmStruct(alarms.LOWLOWBS);
+  for (u8_t i = 0; i < numMenuItems; i++)
+  {
+    alarmsJson[alarmsV.alarms[i].name] = serializeAlarmStruct(alarmsV.alarms[i]);
+  }
+  // alarmsJson["HIGHHIGHBS"] = serializeAlarmStruct(alarmsV.alarms[0]);
+  // alarmsJson["HIGHBS"] = serializeAlarmStruct(alarmsV.alarms[1]);
+  // alarmsJson["LOWBS"] = serializeAlarmStruct(alarmsV.alarms[2]);
+  // alarmsJson["LOWLOWBS"] = serializeAlarmStruct(alarmsV.alarms[3]);
 
   // Open config file
   File configFile = SPIFFS.open(JSON_CONFIG_FILE, "w");
@@ -212,12 +211,122 @@ void saveConfigFile()
   // Close file
   configFile.close();
 }
+/*
+void deserializeAlarmStruct(JsonVariant json, ALARM_STRUCT *alarm)
+{
+  Serial.println(json["level"].as<const char*>());
+  if (!json.isNull())
+  {
+    
+    if (json.containsKey("active"))
+    {
+      alarm->active = json["active"].as<bool>();
+    }
+    if (json.containsKey("continuous"))
+    {
+      alarm->continuous = json["continuous"].as<bool>();
+    }
+    if (json.containsKey("playsound"))
+    {
+      alarm->playsound = json["playsound"].as<bool>();
+    }
+    if (json.containsKey("Blink"))
+    {
+      alarm->Blink = json["Blink"].as<bool>();
+    }
+    if (json.containsKey("high_alarm"))
+    {
+      alarm->high_alarm = json["high_alarm"].as<bool>();
+    }
+    if (json.containsKey("level"))
+    {
+      alarm->level = json["level"].as<double>();
+      Serial.println(json["level"].as<double>());
+    }
+  }
+}*/
 
+bool updateOrAppendAlarm(ALARMSV& alarmsV, const ALARM_STRUCT& newAlarm) {
+  for (auto& alarm : alarmsV.alarms) {
+    if (strcmp(alarm.name.c_str(), newAlarm.name.c_str()) == 0) {
+      // Found an existing alarm with the same name, update it
+      alarm = newAlarm;
+      return true; // Alarm updated
+    }
+  }
+  // No existing alarm found, append the new alarm
+  alarmsV.alarms.push_back(newAlarm);
+  return false; // New alarm added
+}
+
+void deserializeAlarmStruct(const JsonObject& json, ALARM_STRUCT& alarm) {
+  alarm.name = json["name"].as<const char*>(); // Assuming 'name' is part of the JSON structure. Adjust as necessary.
+  alarm.active = json["active"].as<bool>();
+  alarm.continuous = json["continuous"].as<bool>();
+  alarm.playsound = json["playsound"].as<bool>();
+  alarm.Blink = json["Blink"].as<bool>();
+  alarm.high_alarm = json["high_alarm"].as<bool>();
+  alarm.level = json["level"].as<double>();
+}
+
+bool loadConfigFile() {
+    if (!SPIFFS.begin()) {
+        Serial.println("Failed to mount FS");
+        return false;
+    }
+    Serial.println("Mounted File System");
+    if (SPIFFS.exists(JSON_CONFIG_FILE)) {
+        File configFile = SPIFFS.open(JSON_CONFIG_FILE, "r");
+        if (!configFile) {
+            Serial.println("Failed to open configuration file");
+            return false;
+        }
+        StaticJsonDocument<2024> doc;
+        DeserializationError error = deserializeJson(doc, configFile);
+        configFile.close(); // Close the file as soon as it's no longer needed
+
+        if (error) {
+            Serial.print("Failed to parse configuration file: ");
+            Serial.println(error.c_str());
+            return false;
+        }
+
+        // Deserialize user and password as before...
+        strcpy(D_User, doc["D_User"]);
+        strcpy(D_Pass, doc["D_Pass"]);
+
+        JsonObject alarmsObject = doc["alarms"].as<JsonObject>();
+        for (JsonPair kv : alarmsObject) {
+            const char* key = kv.key().c_str();
+            String alarmJsonStr = kv.value().as<String>();
+
+            StaticJsonDocument<256> alarmDoc;
+            auto deserializeError = deserializeJson(alarmDoc, alarmJsonStr);
+            if (deserializeError) {
+                Serial.print("Failed to parse alarm: ");
+                Serial.println(key);
+                continue; // Skip this alarm if parsing failed
+            }
+
+            ALARM_STRUCT tempAlarm;
+            deserializeAlarmStruct(alarmDoc.as<JsonObject>(), tempAlarm);
+            tempAlarm.name = key; // Assign the name from the JSON object's key
+            updateOrAppendAlarm(alarmsV, tempAlarm);
+        }
+
+        Serial.println("Configuration loaded successfully");
+        return true;
+    } else {
+        Serial.println("Configuration file does not exist");
+        return false;
+    }
+}
+/*
 bool loadConfigFile()
 // Load existing configuration file
 {
   // Uncomment if we need to format filesystem
-  //SPIFFS.format();
+  // SPIFFS.format();
 
   // Read configuration from FS json
   Serial.println("Mounting File System...");
@@ -234,7 +343,7 @@ bool loadConfigFile()
       if (configFile)
       {
         Serial.println("Opened configuration file");
-        StaticJsonDocument<1024> json;
+        StaticJsonDocument<2024> json;
         DeserializationError error = deserializeJson(json, configFile);
         serializeJsonPretty(json, Serial);
         if (!error)
@@ -246,16 +355,22 @@ bool loadConfigFile()
           Dexcom_Username.setValue(D_User, 50);
           Dexcom_Password.setValue(D_Pass, 50);
 
-          LowLowAlarm = atof(json["LowLowAlarm"]);
-          LowAlarm = atof(json["LowAlarm"]);
-          HighAlarm = atof(json["HighAlarm"]);
-          HighHighAlarm = atof(json["HighHighAlarm"]);
-
+          // LowLowAlarm = atof(json["LowLowAlarm"]);
+          // LowAlarm = atof(json["LowAlarm"]);
+          // HighAlarm = atof(json["HighAlarm"]);
+          // HighHighAlarm = atof(json["HighHighAlarm"]);
+          JsonArray alarmsobject = json["alarms"];
           // Load alarm values using a dedicated function
-          deserializeAlarmStruct(json["alarms"]["HIGHHIGHBS"], alarms.HIGHHIGHBS);
-          deserializeAlarmStruct(json["alarms"]["HIGHBS"], alarms.HIGHBS);
-          deserializeAlarmStruct(json["alarms"]["LOWBS"], alarms.LOWBS);
-          deserializeAlarmStruct(json["alarms"]["LOWLOWBS"], alarms.LOWLOWBS);
+          StaticJsonDocument<256> alarmDoc;
+          for (u8_t i = 0; i < numMenuItems; i++)
+          {
+            deserializeJson(alarmDoc, alarmsobject[i]);
+            deserializeAlarmStruct(alarmDoc, &alarmsV.alarms[i]);
+          }
+          // deserializeAlarmStruct(json["alarms"]["HIGHHIGHBS"], alarms.HIGHHIGHBS);
+          // deserializeAlarmStruct(json["alarms"]["HIGHBS"], alarms.HIGHBS);
+          // deserializeAlarmStruct(json["alarms"]["LOWBS"], alarms.LOWBS);
+          // deserializeAlarmStruct(json["alarms"]["LOWLOWBS"], alarms.LOWLOWBS);
 
           configFile.close();
           return true;
@@ -266,7 +381,6 @@ bool loadConfigFile()
           Serial.println("Failed to load json config");
         }
         configFile.close();
-
       }
     }
   }
@@ -277,7 +391,7 @@ bool loadConfigFile()
   }
 
   return false;
-}
+}*/
 
 void saveConfigCallback()
 // Callback notifying us of the need to save configuration
@@ -322,21 +436,20 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         // figure out the delay to the next value
         unsigned long currentTime = ntpClient.getEpochTime();
         delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
-        //update minutes_since for signal_loss notify
-        
+        // update minutes_since for signal_loss notify
 
-        //daylight savings check
-        if (delay_time < -60*60+30 || delay_time > 60*60-30)
+        // daylight savings check
+        if (delay_time < -60 * 60 + 30 || delay_time > 60 * 60 - 30)
         {
           ntpClient.setTimeOffset(follower.TZ_offset);
-          //Serial.println("setoffset");
+          // Serial.println("setoffset");
           ntpClient.update();
-          vTaskDelay(pdMS_TO_TICKS(200));  //Little offset for some reason makes this work!!?  I think it gives that ntpClient thread time to work.
+          vTaskDelay(pdMS_TO_TICKS(200)); // Little offset for some reason makes this work!!?  I think it gives that ntpClient thread time to work.
           currentTime = ntpClient.getEpochTime();
           delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
         }
 
-        Home_values.minutes_since = (currentTime - follower.GlucoseNow.timestamp)/60.0;  // only updated every check, relative to timestamp
+        Home_values.minutes_since = (currentTime - follower.GlucoseNow.timestamp) / 60.0; // only updated every check, relative to timestamp
         Serial.print("\nMinutes since:");
         Serial.print(Home_values.minutes_since);
         Serial.print("\n");
@@ -468,9 +581,27 @@ void IRAM_ATTR DownPinHandler()
   }
 }
 
+void IRAM_ATTR SelectPinHandler()
+{
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::SELECT;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
+}
+
+void IRAM_ATTR BackPinHandler()
+{
+  if (debounceEndTime < millis())
+  {
+    buttons = Button::BACK;
+    debounceEndTime = millis() + buttonDebounceMs;
+  }
+}
+
 void Access_point()
 {
-  //vTaskDelay(pdMS_TO_TICKS(1 * 1000));
+  // vTaskDelay(pdMS_TO_TICKS(1 * 1000));
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
@@ -595,19 +726,19 @@ void normal_mode()
   {
     rgb.setColor(COLOR_BLUE_DIMMEST);
   }
-  else if (Home_values.mmol_l > alarms.HIGHBS.level && Home_values.mmol_l < alarms.HIGHHIGHBS.level)
+  else if (Home_values.mmol_l > alarmsV.alarms[1].level && Home_values.mmol_l < alarmsV.alarms[0].level)
   {
     rgb.setColor(COLOR_YELLOW_DIMMEST);
   }
-  else if (Home_values.mmol_l >= alarms.HIGHHIGHBS.level)
+  else if (Home_values.mmol_l >= alarmsV.alarms[1].level)
   {
     rgb.setColor(COLOR_RED_DIMMEST);
   }
-  else if (Home_values.mmol_l <= alarms.LOWBS.level && Home_values.mmol_l > alarms.LOWLOWBS.level)
+  else if (Home_values.mmol_l <= alarmsV.alarms[2].level && Home_values.mmol_l > alarmsV.alarms[3].level)
   {
     rgb.setColor(COLOR_PURPLE_DIMMEST);
   }
-  else if (Home_values.mmol_l <= alarms.LOWLOWBS.level)
+  else if (Home_values.mmol_l <= alarmsV.alarms[3].level)
   {
     rgb.setColor(COLOR_RED_DIMMEST);
   }
@@ -615,7 +746,6 @@ void normal_mode()
   {
     rgb.turnOff();
   }
-
 }
 
 void High_Lights()
@@ -625,49 +755,47 @@ void High_Lights()
     rgb.setColor(COLOR_BLUE);
     // TODO  Need a sound here.  maybe less persistant
   }
-  else if (Home_values.mmol_l > alarms.HIGHBS.level && Home_values.mmol_l < alarms.HIGHHIGHBS.level)
+  else if (Home_values.mmol_l > alarmsV.alarms[1].level && Home_values.mmol_l < alarmsV.alarms[0].level)
   {
     rgb.setColor(COLOR_YELLOW);
     if (!player.isPlaying())
-          {
-            player.playAsync(melody4);
-          }
+    {
+      player.playAsync(melody4);
+    }
   }
-  else if (Home_values.mmol_l >= alarms.HIGHHIGHBS.level)
+  else if (Home_values.mmol_l >= alarmsV.alarms[1].level)
   {
     rgb.setColor(COLOR_RED);
     if (!player.isPlaying())
-          {
-            player.playAsync(melody4);
-          }
+    {
+      player.playAsync(melody4);
+    }
   }
-  else if (Home_values.mmol_l <= alarms.LOWBS.level && Home_values.mmol_l > alarms.LOWLOWBS.level)
+  else if (Home_values.mmol_l <= alarmsV.alarms[2].level && Home_values.mmol_l > alarmsV.alarms[3].level)
   {
     rgb.setColor(COLOR_PURPLE);
     if (!player.isPlaying())
-          {
-            player.playAsync(melody4);
-          }
+    {
+      player.playAsync(melody4);
+    }
   }
-  else if (Home_values.mmol_l <= alarms.LOWLOWBS)
+  else if (Home_values.mmol_l <= alarmsV.alarms[3].level)
   {
     rgb.setColor(COLOR_RED);
     if (!player.isPlaying())
-          {
-            player.playAsync(melody4);
-          }
+    {
+      player.playAsync(melody4);
+    }
   }
   else
   {
     rgb.turnOff();
     if (player.isPlaying())
-          {
-            player.stop();
-          }
+    {
+      player.stop();
+    }
   }
 }
-
-
 
 void Alarm_handler(void *pvParameters)
 {
@@ -685,9 +813,9 @@ void Alarm_handler(void *pvParameters)
       {
         normal_mode();
         if (player.isPlaying())
-          {
-            player.stop();
-          }
+        {
+          player.stop();
+        }
       }
       else
       {
@@ -698,7 +826,6 @@ void Alarm_handler(void *pvParameters)
         else
         {
           normal_mode();
-
         }
         if (count >= 1)
         {
@@ -726,11 +853,14 @@ void Alarm_handler(void *pvParameters)
         SnoozeEndTime = millis() + SnoozeDuration;
       }
     }
-    else if (buttons == Button::SNOOZE_MINUS){
+    else if (buttons == Button::SNOOZE_MINUS)
+    {
       buttons = Button::NOTHING;
-      if (Snoozing){
+      if (Snoozing)
+      {
         SnoozeEndTime -= SnoozeDuration;
-        if (SnoozeEndTime < millis()){
+        if (SnoozeEndTime < millis())
+        {
           Snoozing = false;
         }
       }
@@ -823,36 +953,136 @@ void Settings()
 }
 
 unsigned int selectedMenuItem = 0;
-const int numMenuItems = 5;
-const char *menuItems[numMenuItems] = {"Settings", "Item 1", "Item 2", "Item 3", "Item 4"};
+unsigned int sub_item = 0;
+bool sub_menu_item_selected = false;
+bool sub_menu = false;
+bool selectedItemBlink = false;
+u8_t blinkCount = 0;
+bool valuesChanged = false;
+const char *menuItems[10] = {alarmsV.alarms[0].name.c_str(), alarmsV.alarms[1].name.c_str(), alarmsV.alarms[2].name.c_str(), alarmsV.alarms[3].name.c_str()};
 
-void displayMenu(unsigned int selectedItem)
+//***********************************************************************************************************
+void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int sub_item = 0, bool sub_menu_item_selected = false, int increment = 0)
 {
   display.clearDisplay();
-  display.setTextSize(2);
+  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
 
-  for (int i = 0; i < 4; i++)
+  if (!sub_menu)
   {
-    if ((selectedItem + i) < numMenuItems)
+    display.println("Alarm Settings");
+
+    for (int i = 0; i < numMenuItems; i++)
     {
-      int item = (selectedItem + i) % numMenuItems;
-      if (item == selectedItem)
+      if ((selectedItem) < numMenuItems)
       {
-        display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Highlight selected item
+        int item = (i) % numMenuItems;
+        if (item == selectedItem)
+        {
+          display.setFont();
+          display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Highlight selected item
+          display.setTextSize(1);
+        }
+        else
+        {
+          display.setFont(&TomThumb);
+          display.setTextColor(SSD1306_WHITE);
+          display.setTextSize(1);
+        }
+
+        // display.setCursor(0, i * 16);
+        display.print(" ");
+        display.print(menuItems[item]);
+        display.println(" ");
+      }
+    }
+  }
+  /*else {
+     // Display submenu title or selected alarm's name
+     display.println(alarmsV.alarms[selectedItem].name); // Adjust according to your ALARM_STRUCT fields
+     // Example of displaying alarm details, adjust these according to your needs
+     display.print("Active: ");
+     display.println(alarmsV.alarms[selectedItem].active ? "Yes" : "No");
+     display.print("Level: ");
+     display.println(alarmsV.alarms[selectedItem].level);
+     display.print("Continuous: ");
+     display.println(alarmsV.alarms[selectedItem].continuous ? "Yes" : "No");
+   }*/
+  else
+  {
+    // Assuming you're in a submenu for a specific alarm
+    // Display the submenu title with the selected alarm's name
+    display.println(alarmsV.alarms[selectedItem].name); // Display title
+
+    // Array or list of submenu items related to the alarm
+    const char *subMenuItems[] = {"Active", "Level", "Continuous"};
+    const char *subMenuValues[] = {
+        alarmsV.alarms[selectedItem].active ? "Yes" : "No",
+        dtostrf(alarmsV.alarms[selectedItem].level, 1, 2, buffer), // Assuming level is a float, adjust precision as needed
+        alarmsV.alarms[selectedItem].continuous ? "Yes" : "No"};
+
+    for (int i = 0; i < 3; i++)
+    { // Adjust the loop condition based on the number of submenu items
+      if (i == sub_item)
+      {
+        blinkCount++;
+        // Highlight the selected submenu item
+        if(increment != 0 && sub_menu_item_selected){
+          if(i == 0){
+            alarmsV.alarms[selectedItem].active = !alarmsV.alarms[selectedItem].active;
+          }
+          else if (i == 1){
+            alarmsV.alarms[selectedItem].level = alarmsV.alarms[selectedItem].level + (increment*0.1);
+          }
+          else if (i == 2){
+            alarmsV.alarms[selectedItem].continuous = !alarmsV.alarms[selectedItem].continuous;
+          }
+        }
+        if(sub_menu_item_selected){
+          display.print(subMenuItems[i]);
+          display.print(": ");
+        }
+        display.setFont();
+        if(sub_menu_item_selected && !selectedItemBlink){
+          if (blinkCount > 1){
+            selectedItemBlink= true;
+            blinkCount = 0;
+          }
+        }
+        else{
+          display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Inverted colors for highlight
+          if (blinkCount > 1){
+            selectedItemBlink= false;
+            blinkCount = 0;
+          }
+        }
+        display.setTextSize(1);
+        if(!sub_menu_item_selected){
+          display.print(subMenuItems[i]);
+          display.print(": ");
+        }
+        display.println(subMenuValues[i]);
       }
       else
       {
-        display.setTextColor(SSD1306_WHITE);
+        display.setFont(&TomThumb);
+        display.setTextColor(SSD1306_WHITE); // Normal color
+        display.setTextSize(1);
+        display.print(subMenuItems[i]);
+        display.print(": ");
+        display.println(subMenuValues[i]);
       }
 
-      // display.setCursor(0, i * 16);
-      display.println(menuItems[item]);
+      // Reset text color for non-selected items
+      display.setTextSize(1);
+      display.setFont();
+      display.setTextColor(SSD1306_WHITE);
     }
   }
 
   display.display();
+  display.setFont();
 }
 
 void Graph_Display()
@@ -947,6 +1177,7 @@ void StateLoopTask(void *pvParameters)
 
   while (true)
   {
+    int increment = 0;
     switch (currentState)
     {
     case State::Launch_AP:
@@ -976,11 +1207,13 @@ void StateLoopTask(void *pvParameters)
       else if (buttons == Button::DOWN)
       {
         unsigned long newSnoozeEndTime = SnoozeEndTime - 5 * 60 * 1000;
-        if (newSnoozeEndTime < millis()){
+        if (newSnoozeEndTime < millis())
+        {
           SnoozeEndTime = millis();
           Snoozing = false;
         }
-        else{
+        else
+        {
           SnoozeEndTime = newSnoozeEndTime;
         }
         buttons = Button::NOTHING;
@@ -1020,29 +1253,110 @@ void StateLoopTask(void *pvParameters)
       // stateFunction3();
       break;
     case State::Settings:
-      if (buttons == Button::RIGHT)
+      if (!sub_menu)
       {
-        buttons = Button::NOTHING;
-        currentState = State::Home_screen;
-        break;
+
+        if (buttons == Button::RIGHT)
+        {
+          buttons = Button::NOTHING;
+          currentState = State::Home_screen;
+          selectedMenuItem = 0;
+          if(valuesChanged){
+            saveConfigFile();
+            valuesChanged =false;
+          }
+          break;
+        }
+        else if (buttons == Button::LEFT)
+        {
+          buttons = Button::NOTHING;
+          currentState = State::Graph;
+          selectedMenuItem = 0;
+          if(valuesChanged){
+            saveConfigFile();
+            valuesChanged =false;
+          }
+          break;
+        }
+        else if (buttons == Button::DOWN)
+        {
+          if (selectedMenuItem != numMenuItems - 1)
+          {
+            selectedMenuItem = (selectedMenuItem + 1) % numMenuItems;
+          }
+          buttons = Button::NOTHING;
+        }
+        else if (buttons == Button::UP)
+        {
+          if (selectedMenuItem != 0)
+          {
+            selectedMenuItem = (selectedMenuItem - 1) % numMenuItems;
+          }
+          buttons = Button::NOTHING;
+        }
+        else if (buttons == Button::SELECT)
+        {
+          sub_menu = true;
+          buttons = Button::NOTHING;
+        }
       }
-      else if (buttons == Button::LEFT)
+
+      else if (!sub_menu_item_selected)
       {
-        buttons = Button::NOTHING;
-        currentState = State::Graph;
-        break;
+        if (buttons == Button::BACK)
+        {
+          sub_menu = false;
+          buttons = Button::NOTHING;
+          sub_item = 0;
+        }
+        else if (buttons == Button::DOWN)
+        {
+          if (sub_item != 3 - 1)
+          {
+            sub_item = (sub_item + 1) % 3;
+          }
+          buttons = Button::NOTHING;
+        }
+        else if (buttons == Button::UP)
+        {
+          if (sub_item != 0)
+          {
+            sub_item = (sub_item - 1) % 3;
+          }
+          buttons = Button::NOTHING;
+        }
+        else if (buttons == Button::SELECT)
+        {
+          sub_menu_item_selected = true;
+          buttons = Button::NOTHING;
+        }
       }
-      else if (buttons == Button::DOWN)
-      {
-        selectedMenuItem = (selectedMenuItem + 1) % numMenuItems;
-        buttons = Button::NOTHING;
+
+      else{
+        if (buttons == Button::BACK)
+        {
+          sub_menu_item_selected = false;
+          buttons = Button::NOTHING;
+        }
+        else if (buttons == Button::DOWN || buttons == Button::LEFT)
+        {
+          increment = -1;
+          valuesChanged =true;
+          buttons = Button::NOTHING;
+        }
+        else if (buttons == Button::UP || buttons == Button::RIGHT)
+        {
+          increment = 1;
+          valuesChanged =true;
+          buttons = Button::NOTHING;
+        }
+        else if (buttons == Button::SELECT)
+        {
+          buttons = Button::NOTHING;
+        }
       }
-      else if (buttons == Button::UP)
-      {
-        selectedMenuItem = (selectedMenuItem - 1) % numMenuItems;
-        buttons = Button::NOTHING;
-      }
-      displayMenu(selectedMenuItem);
+
+      displayMenu(selectedMenuItem, sub_menu, sub_item, sub_menu_item_selected, increment);
       // Settings();
       //  stateFunction4();
       break;
@@ -1058,6 +1372,13 @@ void StateLoopTask(void *pvParameters)
   }
 }
 
+void addCustomParameter(const char *id, const char *placeholder, const char *defaultValue, int length, WiFiManager &wifiManager, std::vector<WiFiManagerParameter *> &customPara)
+{
+  WiFiManagerParameter *p = new WiFiManagerParameter(id, placeholder, defaultValue, length);
+  wifiManager.addParameter(p);
+  customPara.push_back(p);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -1066,14 +1387,16 @@ void setup()
 
   // rgb
   rgb.setColor(COLOR_PURPLE_DIM); // RED
-  //player.playAsync(lowToneBeepMelody);
-  // Buttons
-  // AP manual trigger
+  // player.playAsync(lowToneBeepMelody);
+  //  Buttons
+  //  AP manual trigger
   pinMode(TRIGGER_AP_PIN, INPUT);
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
 
   pinMode(SELECT_PIN, INPUT);
-  //attachInterrupt(SELECT_PIN, SnoozeHandler, FALLING);
+  attachInterrupt(SELECT_PIN, SelectPinHandler, FALLING);
+  pinMode(BACK_PIN, INPUT);
+  attachInterrupt(BACK_PIN, BackPinHandler, FALLING);
   pinMode(SNOOZE_PIN_PLUS, INPUT);
   attachInterrupt(SNOOZE_PIN_PLUS, SnoozeHandler, FALLING);
   pinMode(SNOOZE_PIN_MINUS, INPUT);
@@ -1099,6 +1422,8 @@ void setup()
       ;
   }
   display.clearDisplay();
+  // Set font
+
   // display.drawBitmap(0, 0, Dexcom_follow_screen, 128, 64, WHITE);
   display.drawBitmap(0, 0, logo2, 128, 64, WHITE);
 
@@ -1119,7 +1444,7 @@ void setup()
   // Explicitly set WiFi mode
   WiFi.mode(WIFI_STA);
 
-  //delay(5000);
+  // delay(5000);
 
   // Reset settings (only for development)
   // wm.resetSettings();
@@ -1133,10 +1458,17 @@ void setup()
   // Add all defined parameters
   wm.addParameter(&Dexcom_Username);
   wm.addParameter(&Dexcom_Password);
-  wm.addParameter(&LOWLOW_ALARM);
-  wm.addParameter(&LOW_ALARM);
-  wm.addParameter(&HIGH_ALARM);
-  wm.addParameter(&HIGHHIGH_ALARM);
+
+  // WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name, alarmsV.alarms[0].name, dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
+  for (u8_t i = 0; i < numMenuItems; i++)
+  {
+    addCustomParameter(alarmsV.alarms[i].name.c_str(), alarmsV.alarms[i].name.c_str(), dtostrf(alarmsV.alarms[i].level, 1, 2, buffer), DOUBLE_STRING_SIZE, wm, customParameters);
+  }
+
+  // wm.addParameter(&LOWLOW_ALARM);
+  // wm.addParameter(&LOW_ALARM);
+  // wm.addParameter(&HIGH_ALARM);
+  // wm.addParameter(&HIGHHIGH_ALARM);
 
   // rgb
   rgb.setColor(COLOR_BLUE_DIM); // Blue
@@ -1175,14 +1507,14 @@ void setup()
 
   Load_from_WM();
   // Copy the string value
-  //strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
-  //Serial.print("D_User: ");
-  //Serial.println(D_User);
+  // strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
+  // Serial.print("D_User: ");
+  // Serial.println(D_User);
 
   // Convert the number value
-  //strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
-  //Serial.print("D_Pass: ");
-  //Serial.println(D_Pass);
+  // strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
+  // Serial.print("D_Pass: ");
+  // Serial.println(D_Pass);
 
   follower.Set_user_pass(D_User, D_Pass);
   follower.getNewSessionID();
@@ -1212,9 +1544,11 @@ void setup()
     currentState = State::Home_screen;
   }
   follower.GlucoseLevelsArrayPopulate();
-  //ntpClient.setTimeOffset(follower.TZ_offset);
-  //ntpClient.update();
-  // rgb.setColor(COLOR_YELLOW_DIM); //Yellow
+  follower.GlucoseLevelsNow();
+  ntpClient.setTimeOffset(follower.TZ_offset);
+  // ntpClient.setTimeOffset(follower.TZ_offset);
+  // ntpClient.update();
+  //  rgb.setColor(COLOR_YELLOW_DIM); //Yellow
 
   // Create and start the glucose update task
   xTaskCreate(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 2, NULL);
@@ -1225,7 +1559,7 @@ void setup()
 void loop()
 {
   // do nothing in the loop. just loops
-  //player.playAsync(lowToneBeepMelody);
+  // player.playAsync(lowToneBeepMelody);
   while (true)
   {
     vTaskDelay(pdMS_TO_TICKS(5 * 1000));
