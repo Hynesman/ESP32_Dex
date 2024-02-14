@@ -1,5 +1,5 @@
 // structs to include
-
+#include <RGBLED.h>
 // Define the possible states
 enum class State
 {
@@ -54,21 +54,24 @@ struct ALARM_STRUCT{
     bool Blink;
     bool high_alarm;
     double level;
+    int ledColorRed, ledColorGreen, ledColorBlue; // RGB values for the LED color
+    String soundName;
 };
 
+/*
 struct ALARMS {
     ALARM_STRUCT HIGHHIGHBS{"ReallyHigh",true, true, true, true, true, 13.3}; // Example defaults
     ALARM_STRUCT HIGHBS{"High",true, true, true, true, true, 10.0};   // Additional examples
     ALARM_STRUCT LOWBS{"Low",true, true, true, true, false, 3.99};   // You can adjust these
     ALARM_STRUCT LOWLOWBS{"LowLow",true, true, true, true, false, 3.3};  // as needed
-};
+};*/
 
 struct ALARMSV {
     std::vector<ALARM_STRUCT> alarms = {
-        {"ReallyHigh", true, true, true, true, true, 13.3},
-        {"High", true, true, true, true, true, 10.0},
-        {"Low", true, true, true, true, false, 3.99},
-        {"LowLow", true, true, true, true, false, 3.3}
+        {"ReallyHigh", true, true, true, true, true, 13.3, COLOR_RED, "Pattern 4"},
+        {"High", true, true, true, true, true, 10.0, COLOR_YELLOW, "Pattern 4"},
+        {"Low", true, true, true, true, false, 3.99, COLOR_PURPLE, "Pattern 4"},
+        {"LowLow", true, true, true, true, false, 3.3, COLOR_RED, "Pattern 4"}
     };
 };
 struct Status {

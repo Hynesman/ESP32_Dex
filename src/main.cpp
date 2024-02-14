@@ -43,11 +43,6 @@ char D_Pass[50] = "password";
 ALARMSV alarmsV;
 int numMenuItems = alarmsV.alarms.size();
 
-// double LowLowAlarm = 3.9;
-// double LowAlarm = 4.01;
-// double HighAlarm = 10.0;
-// double HighHighAlarm = 13.3;
-
 #define DOUBLE_STRING_SIZE 10
 // Convert double to string
 char buffer[DOUBLE_STRING_SIZE];
@@ -57,11 +52,6 @@ WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom username", D_User, 5
 WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Username", D_Pass, 50);
 std::vector<WiFiManagerParameter *> customParameters;
 // Text boxes for double values
-// WiFiManagerParameter LOWLOW_ALARM("LOWLOW_ALARM", "LOW LOW ALARM", dtostrf(LowLowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
-// WiFiManagerParameter LOW_ALARM("LOW_ALARM", "LOW ALARM", dtostrf(LowAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
-// WiFiManagerParameter HIGH_ALARM("HIGH_ALARM", "HIGH ALARM", dtostrf(HighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
-// WiFiManagerParameter HIGHHIGH_ALARM("HIGHHIGH_ALARM", "HIGH HIGH ALARM", dtostrf(HighHighAlarm, 1, 2, buffer), DOUBLE_STRING_SIZE);
-
 WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name.c_str(), alarmsV.alarms[0].name.c_str(), dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
 WiFiManagerParameter HIGH_ALARM(alarmsV.alarms[1].name.c_str(), alarmsV.alarms[1].name.c_str(), dtostrf(alarmsV.alarms[1].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
 WiFiManagerParameter LOW_ALARM(alarmsV.alarms[2].name.c_str(), alarmsV.alarms[2].name.c_str(), dtostrf(alarmsV.alarms[2].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
@@ -141,29 +131,27 @@ bool Load_from_WM()
     alarmsV.alarms[i].level = atof(customParameters[i]->getValue());
   }
 
-  // LowLowAlarm = atof(LOWLOW_ALARM.getValue());
-  // LowAlarm = atof(LOW_ALARM.getValue());
-  // HighAlarm = atof(HIGH_ALARM.getValue());
-  // HighHighAlarm = atof(HIGHHIGH_ALARM.getValue());
   return true;
 }
 
 String serializeAlarmStruct(const ALARM_STRUCT &alarm)
 {
   StaticJsonDocument<256> doc; // Adjust size as needed
-  doc["name"]= alarm.name;
+  doc["name"] = alarm.name;
   doc["active"] = alarm.active;
   doc["continuous"] = alarm.continuous;
   doc["playsound"] = alarm.playsound;
   doc["Blink"] = alarm.Blink;
   doc["high_alarm"] = alarm.high_alarm;
   doc["level"] = alarm.level;
+  doc["ledColorRed"] = alarm.ledColorRed;
+  doc["ledColorGreen"] = alarm.ledColorGreen;
+  doc["ledColorBlue"] = alarm.ledColorBlue;
+  doc["soundName"] = alarm.soundName;
   String output;
   serializeJson(doc, output);
   return output;
 }
-
-
 
 void saveConfigFile()
 // Save Config in JSON format
@@ -176,11 +164,6 @@ void saveConfigFile()
   StaticJsonDocument<1082> json;
   json["D_User"] = D_User;
   json["D_Pass"] = D_Pass;
-  // Store double values as strings in JSON
-  // json["LowLowAlarm"] = dtostrf(LowLowAlarm, 1, 2, buffer);
-  // json["LowAlarm"] = dtostrf(LowAlarm, 1, 2, buffer);
-  // json["HighAlarm"] = dtostrf(HighAlarm, 1, 2, buffer);
-  // json["HighHighAlarm"] = dtostrf(HighHighAlarm, 1, 2, buffer);
 
   // Serialize ALARMS struct
   JsonObject alarmsJson = json.createNestedObject("alarms");
@@ -188,10 +171,6 @@ void saveConfigFile()
   {
     alarmsJson[alarmsV.alarms[i].name] = serializeAlarmStruct(alarmsV.alarms[i]);
   }
-  // alarmsJson["HIGHHIGHBS"] = serializeAlarmStruct(alarmsV.alarms[0]);
-  // alarmsJson["HIGHBS"] = serializeAlarmStruct(alarmsV.alarms[1]);
-  // alarmsJson["LOWBS"] = serializeAlarmStruct(alarmsV.alarms[2]);
-  // alarmsJson["LOWLOWBS"] = serializeAlarmStruct(alarmsV.alarms[3]);
 
   // Open config file
   File configFile = SPIFFS.open(JSON_CONFIG_FILE, "w");
@@ -211,44 +190,13 @@ void saveConfigFile()
   // Close file
   configFile.close();
 }
-/*
-void deserializeAlarmStruct(JsonVariant json, ALARM_STRUCT *alarm)
-{
-  Serial.println(json["level"].as<const char*>());
-  if (!json.isNull())
-  {
-    
-    if (json.containsKey("active"))
-    {
-      alarm->active = json["active"].as<bool>();
-    }
-    if (json.containsKey("continuous"))
-    {
-      alarm->continuous = json["continuous"].as<bool>();
-    }
-    if (json.containsKey("playsound"))
-    {
-      alarm->playsound = json["playsound"].as<bool>();
-    }
-    if (json.containsKey("Blink"))
-    {
-      alarm->Blink = json["Blink"].as<bool>();
-    }
-    if (json.containsKey("high_alarm"))
-    {
-      alarm->high_alarm = json["high_alarm"].as<bool>();
-    }
-    if (json.containsKey("level"))
-    {
-      alarm->level = json["level"].as<double>();
-      Serial.println(json["level"].as<double>());
-    }
-  }
-}*/
 
-bool updateOrAppendAlarm(ALARMSV& alarmsV, const ALARM_STRUCT& newAlarm) {
-  for (auto& alarm : alarmsV.alarms) {
-    if (strcmp(alarm.name.c_str(), newAlarm.name.c_str()) == 0) {
+bool updateOrAppendAlarm(ALARMSV &alarmsV, const ALARM_STRUCT &newAlarm)
+{
+  for (auto &alarm : alarmsV.alarms)
+  {
+    if (strcmp(alarm.name.c_str(), newAlarm.name.c_str()) == 0)
+    {
       // Found an existing alarm with the same name, update it
       alarm = newAlarm;
       return true; // Alarm updated
@@ -259,139 +207,84 @@ bool updateOrAppendAlarm(ALARMSV& alarmsV, const ALARM_STRUCT& newAlarm) {
   return false; // New alarm added
 }
 
-void deserializeAlarmStruct(const JsonObject& json, ALARM_STRUCT& alarm) {
-  alarm.name = json["name"].as<const char*>(); // Assuming 'name' is part of the JSON structure. Adjust as necessary.
+void deserializeAlarmStruct(const JsonObject &json, ALARM_STRUCT &alarm)
+{
+  alarm.name = json["name"].as<const char *>(); // Assuming 'name' is part of the JSON structure. Adjust as necessary.
   alarm.active = json["active"].as<bool>();
   alarm.continuous = json["continuous"].as<bool>();
   alarm.playsound = json["playsound"].as<bool>();
   alarm.Blink = json["Blink"].as<bool>();
   alarm.high_alarm = json["high_alarm"].as<bool>();
   alarm.level = json["level"].as<double>();
+  alarm.ledColorRed = json["ledColorRed"].as<int>();
+  alarm.ledColorGreen = json["ledColorGreen"].as<int>();
+  alarm.ledColorBlue = json["ledColorBlue"].as<int>();
+  alarm.soundName = json["soundName"].as<const char *>();
 }
 
-bool loadConfigFile() {
-    if (!SPIFFS.begin()) {
-        Serial.println("Failed to mount FS");
-        return false;
-    }
-    Serial.println("Mounted File System");
-    if (SPIFFS.exists(JSON_CONFIG_FILE)) {
-        File configFile = SPIFFS.open(JSON_CONFIG_FILE, "r");
-        if (!configFile) {
-            Serial.println("Failed to open configuration file");
-            return false;
-        }
-        StaticJsonDocument<2024> doc;
-        DeserializationError error = deserializeJson(doc, configFile);
-        configFile.close(); // Close the file as soon as it's no longer needed
-
-        if (error) {
-            Serial.print("Failed to parse configuration file: ");
-            Serial.println(error.c_str());
-            return false;
-        }
-
-        // Deserialize user and password as before...
-        strcpy(D_User, doc["D_User"]);
-        strcpy(D_Pass, doc["D_Pass"]);
-
-        JsonObject alarmsObject = doc["alarms"].as<JsonObject>();
-        for (JsonPair kv : alarmsObject) {
-            const char* key = kv.key().c_str();
-            String alarmJsonStr = kv.value().as<String>();
-
-            StaticJsonDocument<256> alarmDoc;
-            auto deserializeError = deserializeJson(alarmDoc, alarmJsonStr);
-            if (deserializeError) {
-                Serial.print("Failed to parse alarm: ");
-                Serial.println(key);
-                continue; // Skip this alarm if parsing failed
-            }
-
-            ALARM_STRUCT tempAlarm;
-            deserializeAlarmStruct(alarmDoc.as<JsonObject>(), tempAlarm);
-            tempAlarm.name = key; // Assign the name from the JSON object's key
-            updateOrAppendAlarm(alarmsV, tempAlarm);
-        }
-
-        Serial.println("Configuration loaded successfully");
-        return true;
-    } else {
-        Serial.println("Configuration file does not exist");
-        return false;
-    }
-}
-/*
 bool loadConfigFile()
-// Load existing configuration file
 {
-  // Uncomment if we need to format filesystem
-  // SPIFFS.format();
-
-  // Read configuration from FS json
-  Serial.println("Mounting File System...");
-
-  // May need to make it begin(true) first time you are using SPIFFS
-  if (SPIFFS.begin(false) || SPIFFS.begin(true))
+   //SPIFFS.format();
+  if (!SPIFFS.begin())
   {
-    Serial.println("mounted file system");
-    if (SPIFFS.exists(JSON_CONFIG_FILE))
+    Serial.println("Failed to mount FS");
+    return false;
+  }
+  Serial.println("Mounted File System");
+  if (SPIFFS.exists(JSON_CONFIG_FILE))
+  {
+    File configFile = SPIFFS.open(JSON_CONFIG_FILE, "r");
+    if (!configFile)
     {
-      // The file exists, reading and loading
-      Serial.println("reading config file");
-      File configFile = SPIFFS.open(JSON_CONFIG_FILE, "r");
-      if (configFile)
-      {
-        Serial.println("Opened configuration file");
-        StaticJsonDocument<2024> json;
-        DeserializationError error = deserializeJson(json, configFile);
-        serializeJsonPretty(json, Serial);
-        if (!error)
-        {
-          Serial.println("Parsing JSON");
-
-          strcpy(D_User, json["D_User"]);
-          strcpy(D_Pass, json["D_Pass"]);
-          Dexcom_Username.setValue(D_User, 50);
-          Dexcom_Password.setValue(D_Pass, 50);
-
-          // LowLowAlarm = atof(json["LowLowAlarm"]);
-          // LowAlarm = atof(json["LowAlarm"]);
-          // HighAlarm = atof(json["HighAlarm"]);
-          // HighHighAlarm = atof(json["HighHighAlarm"]);
-          JsonArray alarmsobject = json["alarms"];
-          // Load alarm values using a dedicated function
-          StaticJsonDocument<256> alarmDoc;
-          for (u8_t i = 0; i < numMenuItems; i++)
-          {
-            deserializeJson(alarmDoc, alarmsobject[i]);
-            deserializeAlarmStruct(alarmDoc, &alarmsV.alarms[i]);
-          }
-          // deserializeAlarmStruct(json["alarms"]["HIGHHIGHBS"], alarms.HIGHHIGHBS);
-          // deserializeAlarmStruct(json["alarms"]["HIGHBS"], alarms.HIGHBS);
-          // deserializeAlarmStruct(json["alarms"]["LOWBS"], alarms.LOWBS);
-          // deserializeAlarmStruct(json["alarms"]["LOWLOWBS"], alarms.LOWLOWBS);
-
-          configFile.close();
-          return true;
-        }
-        else
-        {
-          // Error loading JSON data
-          Serial.println("Failed to load json config");
-        }
-        configFile.close();
-      }
+      Serial.println("Failed to open configuration file");
+      return false;
     }
+    StaticJsonDocument<2024> doc;
+    DeserializationError error = deserializeJson(doc, configFile);
+    configFile.close(); // Close the file as soon as it's no longer needed
+
+    if (error)
+    {
+      Serial.print("Failed to parse configuration file: ");
+      Serial.println(error.c_str());
+      return false;
+    }
+
+    // Deserialize user and password as before...
+    strcpy(D_User, doc["D_User"]);
+    strcpy(D_Pass, doc["D_Pass"]);
+
+    JsonObject alarmsObject = doc["alarms"].as<JsonObject>();
+    for (JsonPair kv : alarmsObject)
+    {
+      const char *key = kv.key().c_str();
+      String alarmJsonStr = kv.value().as<String>();
+
+      StaticJsonDocument<550> alarmDoc;
+      auto deserializeError = deserializeJson(alarmDoc, alarmJsonStr);
+      serializeJsonPretty(alarmDoc, Serial);
+      if (deserializeError)
+      {
+        Serial.print("Failed to parse alarm: ");
+        Serial.println(key);
+        continue; // Skip this alarm if parsing failed
+      }
+
+      ALARM_STRUCT tempAlarm;
+      deserializeAlarmStruct(alarmDoc.as<JsonObject>(), tempAlarm);
+      tempAlarm.name = key; // Assign the name from the JSON object's key
+      updateOrAppendAlarm(alarmsV, tempAlarm);
+    }
+
+    Serial.println("Configuration loaded successfully");
+    return true;
   }
   else
   {
-    // Error mounting file system
-    Serial.println("Failed to mount FS");
+    Serial.println("Configuration file does not exist");
+    return false;
   }
-
-  return false;
-}*/
+}
 
 void saveConfigCallback()
 // Callback notifying us of the need to save configuration
@@ -483,7 +376,7 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         Home_values.message_2 = "Wifi Error";
 
         // wm.autoConnect()
-        if (!wm.autoConnect("ESP_AP"))
+        if (!wm.autoConnect("Glucose Follower"))
         {
           Serial.println("failed to connect and hit timeout");
           delay(3000);
@@ -608,7 +501,7 @@ void Access_point()
   display.setCursor(0, 0);
   display.println("Connect to:");
   display.setTextSize(2);
-  display.println(" \"ESP_AP\"");
+  display.println(" \"Glucose Follower\"");
   display.setTextSize(1);
   display.println("to choose Wifi and\nDexcom Credentials");
   display.display();
@@ -623,7 +516,7 @@ void Access_point()
   // Set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
   wm.setAPCallback(configModeCallback);
 
-  if (!wm.startConfigPortal("ESP_AP"))
+  if (!wm.startConfigPortal("Glucose Follower"))
   {
     Serial.println("failed to connect and hit timeout");
     delay(3000);
@@ -672,7 +565,7 @@ void Access_point()
   return;
 }
 
-const unsigned char *Trend_to_image(const char *trend_char)
+/*const unsigned char *Trend_to_image(const char *trend_char)
 {
   if (trend_char == nullptr)
   {
@@ -718,8 +611,9 @@ const unsigned char *Trend_to_image(const char *trend_char)
   {
     return arrowsQ;
   }
-}
+}*/
 
+/*
 void normal_mode()
 {
   if (Home_values.minutes_since > SIGNAL_LOST_MIN)
@@ -795,9 +689,145 @@ void High_Lights()
       player.stop();
     }
   }
+}*/
+
+bool isAlarmConditionMet(const ALARM_STRUCT &alarm, double currentGlucoseLevel)
+{
+  if (alarm.high_alarm && currentGlucoseLevel > alarm.level)
+  {
+    return true;
+  }
+  else if (!alarm.high_alarm && currentGlucoseLevel < alarm.level)
+  {
+    return true;
+  }
+  return false;
+}
+
+const ALARM_STRUCT *getMostCriticalActiveAlarm(double currentGlucoseLevel)
+{
+  const ALARM_STRUCT *mostCriticalAlarm = nullptr;
+  double minExceedance = 20; // Initialize with zero to track the maximum exceedance of the threshold.
+
+  for (const auto &alarm : alarmsV.alarms)
+  {
+    if (alarm.active && isAlarmConditionMet(alarm, currentGlucoseLevel))
+    {
+      double exceedance = -1;
+      if (alarm.high_alarm && currentGlucoseLevel > alarm.level)
+      {
+        // For high alarms, exceedance is how much the glucose level is above the alarm's level.
+        exceedance = currentGlucoseLevel - alarm.level;
+      }
+      else if (!alarm.high_alarm && currentGlucoseLevel < alarm.level)
+      {
+        exceedance = alarm.level - currentGlucoseLevel;
+      }
+
+      // Check if this alarm's exceedance is greater than any previously found alarm's exceedance.
+      if (exceedance < minExceedance)
+      {
+        mostCriticalAlarm = &alarm;
+        minExceedance = exceedance;
+      }
+    }
+  }
+
+  return mostCriticalAlarm; // Returns the most critical alarm based on the largest exceedance, or nullptr if no thresholds are exceeded.
 }
 
 void Alarm_handler(void *pvParameters)
+{
+  bool blinkbool = true;
+  int count = 0;
+  bool blinktoggle = false;
+  double lastBG = 0.00;
+  bool allowcontinuous = true;
+  //minutes since home_values.minutessince
+  while (true)
+  {
+    const ALARM_STRUCT *criticalAlarm = getMostCriticalActiveAlarm(Home_values.mmol_l);
+    if (criticalAlarm)
+    {
+      if (!Snoozing && !blinktoggle)
+      {
+        rgb.setColor(criticalAlarm->ledColorRed / 3, criticalAlarm->ledColorGreen / 3, criticalAlarm->ledColorBlue / 3);
+
+
+        if (allowcontinuous && !player.isPlaying() && criticalAlarm->playsound )
+        {
+          playMelodyByName(player, criticalAlarm->soundName);
+          allowcontinuous = false;
+        }
+        if (criticalAlarm->Blink)
+        {
+          blinktoggle = !blinktoggle;
+        }
+      }
+      else
+      {
+        rgb.setColor(criticalAlarm->ledColorRed / 10, criticalAlarm->ledColorGreen / 10, criticalAlarm->ledColorBlue / 10);
+        if (!player.isPlaying() && Snoozing)
+        {
+          player.stop();
+        }
+        blinktoggle = !blinktoggle;
+      }
+      if (criticalAlarm->continuous){
+        allowcontinuous = true;
+      }
+      else if (Home_values.mmol_l != lastBG){
+        allowcontinuous = true;
+      }
+      lastBG = Home_values.mmol_l;
+    }
+    else
+    {
+      rgb.turnOff(); // No critical alarm or snoozing
+      if (!player.isPlaying())
+      {
+        player.stop();
+      }
+    }
+
+    if (buttons == Button::SNOOZE_PLUS) // Implement this function to detect button press
+    {
+      buttons = Button::NOTHING;
+      if (Snoozing)
+      {
+        SnoozeEndTime += SnoozeDuration;
+      }
+      else
+      {
+        Snoozing = true;
+        SnoozeEndTime = millis() + SnoozeDuration;
+      }
+    }
+    else if (buttons == Button::SNOOZE_MINUS)
+    {
+      buttons = Button::NOTHING;
+      if (Snoozing)
+      {
+        SnoozeEndTime -= SnoozeDuration;
+        if (SnoozeEndTime < millis())
+        {
+          Snoozing = false;
+        }
+      }
+    }
+
+    // Check if snooze timer has expired
+    if (Snoozing && millis() >= SnoozeEndTime)
+    {
+      Snoozing = false;
+      SnoozeEndTime = 0;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(250));
+  }
+}
+
+/*void Alarm_handlerOLD(void *pvParameters)
 {
   bool blinkbool = true;
   int count = 0;
@@ -875,7 +905,7 @@ void Alarm_handler(void *pvParameters)
 
     vTaskDelay(pdMS_TO_TICKS(250));
   }
-}
+}*/
 
 void Homescreen_display()
 {
@@ -941,7 +971,7 @@ void Homescreen_display()
   display.display();
   return;
 }
-
+/*
 void Settings()
 {
   display.clearDisplay();
@@ -950,7 +980,7 @@ void Settings()
   display.setCursor(0, 0);
   display.println("Settings");
   display.display();
-}
+}*/
 
 unsigned int selectedMenuItem = 0;
 unsigned int sub_item = 0;
@@ -998,17 +1028,6 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
       }
     }
   }
-  /*else {
-     // Display submenu title or selected alarm's name
-     display.println(alarmsV.alarms[selectedItem].name); // Adjust according to your ALARM_STRUCT fields
-     // Example of displaying alarm details, adjust these according to your needs
-     display.print("Active: ");
-     display.println(alarmsV.alarms[selectedItem].active ? "Yes" : "No");
-     display.print("Level: ");
-     display.println(alarmsV.alarms[selectedItem].level);
-     display.print("Continuous: ");
-     display.println(alarmsV.alarms[selectedItem].continuous ? "Yes" : "No");
-   }*/
   else
   {
     // Assuming you're in a submenu for a specific alarm
@@ -1016,49 +1035,70 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
     display.println(alarmsV.alarms[selectedItem].name); // Display title
 
     // Array or list of submenu items related to the alarm
-    const char *subMenuItems[] = {"Active", "Level", "Continuous"};
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound"};
     const char *subMenuValues[] = {
         alarmsV.alarms[selectedItem].active ? "Yes" : "No",
         dtostrf(alarmsV.alarms[selectedItem].level, 1, 2, buffer), // Assuming level is a float, adjust precision as needed
-        alarmsV.alarms[selectedItem].continuous ? "Yes" : "No"};
+        alarmsV.alarms[selectedItem].continuous ? "Yes" : "once",
+        alarmsV.alarms[selectedItem].Blink ? "Yes" : "No",
+        alarmsV.alarms[selectedItem].playsound ? "Yes" : "No"};
 
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 5; i++)
     { // Adjust the loop condition based on the number of submenu items
       if (i == sub_item)
       {
         blinkCount++;
         // Highlight the selected submenu item
-        if(increment != 0 && sub_menu_item_selected){
-          if(i == 0){
+        if (increment != 0 && sub_menu_item_selected)
+        {
+          if (i == 0)
+          {
             alarmsV.alarms[selectedItem].active = !alarmsV.alarms[selectedItem].active;
           }
-          else if (i == 1){
-            alarmsV.alarms[selectedItem].level = alarmsV.alarms[selectedItem].level + (increment*0.1);
+          else if (i == 1)
+          {
+            alarmsV.alarms[selectedItem].level = alarmsV.alarms[selectedItem].level + (increment * 0.1);
           }
-          else if (i == 2){
+          else if (i == 2)
+          {
             alarmsV.alarms[selectedItem].continuous = !alarmsV.alarms[selectedItem].continuous;
           }
+          else if (i == 3)
+          {
+            alarmsV.alarms[selectedItem].Blink = !alarmsV.alarms[selectedItem].Blink;
+          }
+          else if (i == 4)
+          {
+            alarmsV.alarms[selectedItem].playsound = !alarmsV.alarms[selectedItem].playsound;
+          }
+
         }
-        if(sub_menu_item_selected){
+        if (sub_menu_item_selected)
+        {
           display.print(subMenuItems[i]);
           display.print(": ");
         }
         display.setFont();
-        if(sub_menu_item_selected && !selectedItemBlink){
-          if (blinkCount > 1){
-            selectedItemBlink= true;
+        if (sub_menu_item_selected && !selectedItemBlink)
+        {
+          if (blinkCount > 1)
+          {
+            selectedItemBlink = true;
             blinkCount = 0;
           }
         }
-        else{
+        else
+        {
           display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Inverted colors for highlight
-          if (blinkCount > 1){
-            selectedItemBlink= false;
+          if (blinkCount > 1)
+          {
+            selectedItemBlink = false;
             blinkCount = 0;
           }
         }
         display.setTextSize(1);
-        if(!sub_menu_item_selected){
+        if (!sub_menu_item_selected)
+        {
           display.print(subMenuItems[i]);
           display.print(": ");
         }
@@ -1261,9 +1301,10 @@ void StateLoopTask(void *pvParameters)
           buttons = Button::NOTHING;
           currentState = State::Home_screen;
           selectedMenuItem = 0;
-          if(valuesChanged){
+          if (valuesChanged)
+          {
             saveConfigFile();
-            valuesChanged =false;
+            valuesChanged = false;
           }
           break;
         }
@@ -1272,9 +1313,10 @@ void StateLoopTask(void *pvParameters)
           buttons = Button::NOTHING;
           currentState = State::Graph;
           selectedMenuItem = 0;
-          if(valuesChanged){
+          if (valuesChanged)
+          {
             saveConfigFile();
-            valuesChanged =false;
+            valuesChanged = false;
           }
           break;
         }
@@ -1311,9 +1353,9 @@ void StateLoopTask(void *pvParameters)
         }
         else if (buttons == Button::DOWN)
         {
-          if (sub_item != 3 - 1)
+          if (sub_item != 5 - 1)
           {
-            sub_item = (sub_item + 1) % 3;
+            sub_item = (sub_item + 1) % 5;
           }
           buttons = Button::NOTHING;
         }
@@ -1321,7 +1363,7 @@ void StateLoopTask(void *pvParameters)
         {
           if (sub_item != 0)
           {
-            sub_item = (sub_item - 1) % 3;
+            sub_item = (sub_item - 1) % 5;
           }
           buttons = Button::NOTHING;
         }
@@ -1332,7 +1374,8 @@ void StateLoopTask(void *pvParameters)
         }
       }
 
-      else{
+      else
+      {
         if (buttons == Button::BACK)
         {
           sub_menu_item_selected = false;
@@ -1341,13 +1384,13 @@ void StateLoopTask(void *pvParameters)
         else if (buttons == Button::DOWN || buttons == Button::LEFT)
         {
           increment = -1;
-          valuesChanged =true;
+          valuesChanged = true;
           buttons = Button::NOTHING;
         }
         else if (buttons == Button::UP || buttons == Button::RIGHT)
         {
           increment = 1;
-          valuesChanged =true;
+          valuesChanged = true;
           buttons = Button::NOTHING;
         }
         else if (buttons == Button::SELECT)
@@ -1475,7 +1518,7 @@ void setup()
   if (forceConfig)
   // Run if we need a configuration
   {
-    if (!wm.startConfigPortal("ESP_AP"))
+    if (!wm.startConfigPortal("Glucose Follower"))
     {
       Serial.println("failed to connect and hit timeout");
       delay(3000);
@@ -1486,7 +1529,7 @@ void setup()
   }
   else
   {
-    if (!wm.autoConnect("ESP_AP"))
+    if (!wm.autoConnect("Glucose Follower"))
     {
       Serial.println("failed to connect and hit timeout");
       delay(3000);

@@ -46,51 +46,61 @@ Melody r2d2Surprise = MelodyFactory.load("R2-D2 Surprise", 100, surprise, 4);
 String r2d2Theme[] = { "E5", "D5", "G5", "F5", "E5", "SILENCE" };
 Melody r2d2ThemeMelody = MelodyFactory.load("R2-D2 Theme", 100, r2d2Theme, 5);
 
+Melody* getMelodyByName(const String& name) {
+    if (name == "Pattern 1") {
+        return &melody1;
+    } else if (name == "Pattern 2") {
+        return &melody2;
+    } else if (name == "Pattern 3") {
+        return &melody3;
+    } else if (name == "Pattern 4") {
+        return &melody4;
+    } else if (name == "Pattern 5") {
+        return &melody5;
+    } else if (name == "Alarming Melody") {
+        return &alarmingMelody;
+    } else if (name == "Low Tone Beep") {
+        return &lowToneBeepMelody;
+    } else if (name == "R2-D2 Happy Beeps") {
+        return &r2d2HappyBeeps;
+    } else if (name == "R2-D2 Sad Whistle") {
+        return &r2d2SadWhistle;
+    } else if (name == "R2-D2 Angry Beeps") {
+        return &r2d2AngryBeeps;
+    } else if (name == "R2-D2 Surprise") {
+        return &r2d2Surprise;
+    } else if (name == "R2-D2 Theme") {
+        return &r2d2ThemeMelody;
+    }
+    // If the name doesn't match any predefined melody
+    return nullptr;
+}
 
-// Define note frequencies for your melody (using standard MIDI note values)
-int melodyFrequencies[] = {
-  277, 330, 277, 277, 330,  // CS4, E4, CS4, CS4, E4
-  277, 277, 330, 277, 311,  // CS4, CS4, E4, CS4, DS4
-  277, 277, 330, 277,       // CS4, CS4, E4, CS4
-  247,                      // B3
-  277, 330, 277, 277, 330,  // CS4, E4, CS4, CS4, E4
-  277, 311, 277, 330,       // CS4, DS4, CS4, E4
-  247,                      // B3
-  330, 330, 330, 330, 330, 330, 330, 330, 330,  // E4 (repeated 9 times)
-  330, 330, 330, 330, 370, 392, 392,             // E4, FS4, GS4, GS4
-  392, 330, 370, 494, 392, 392, 392, 392, 392,  // GS4, FS4, B4, GS4, GS4 (repeated 5 times)
-  370, 370, 370, 392, 370, 370, 370, 330,  // FS4, FS4, FS4, GS4, FS4, FS4, FS4, FS4, FS4, GS4, FS4
-  277, 196, 196, 392, 392,  // E4, CS4, CS4, GS4, GS4
-  392, 392, 392, 392, 392, 392, 392, 392, 392, 392, 392, 392, 392, 392, 392, 392,  // GS4 (repeated 16 times)
-  277, 277, 277, 277, 277,  // E4, CS4, CS4, CS4, CS4
-  207, 247,                // G3, B3
-  277, 277, 370, 392, 330, 392,  // CS4, CS4, FS4, GS4, E4, FS4
-  247,                      // B3
-  330, 392, 494, 392, 330, 277, 330, 392,  // E4, FS4, B4, GS4, FS4, CS4, E4, GS4
-  392, 330, 392, 277, 196, 392, 392, 330, 330,  // FS4, E4, CS4, CS4, GS4, GS4, FS4, FS4, E4
-  247, 277, 277, 392, 392,  // B3, CS4, CS4, GS4, GS4
-  330, 330, 330, 330, 330, 330, 330, 330, 330, 330, 330, 330, 330, 330, 330, 330,  // E4 (repeated 16 times)
-  277, 277, 277, 277, 277,  // E4, CS4, CS4, CS4, CS4
-  207, 247,                // G3, B3
-  330, 330, 392, 392, 330, 392, 392, 330,  // E4, FS4, GS4, GS4, E4, E4, E4, FS4, FS4
-  247,                      // B3
-  277, 330, 392, 330, 277, 277, 277, 330,  // CS4, E4, GS4, E4, CS4, CS4, CS4, FS4, FS4
-  330, 392, 392, 330, 330,  // E4, FS4, FS4, E4, E4
-  277, 277,                // CS4, CS4
-  207, 247,                // G3, B3
-  330, 330, 392, 392, 330, 330, 330, 330,  // E4, FS4, GS4, GS4, E4, E4, E4, FS4, FS4
-  330, 330, 392, 392,  // E4, FS4, GS4, GS4
-  277, 277                 // CS4, CS4
+void playMelodyByName(MelodyPlayer& player, const String& melodyName) {
+    Melody* melody = getMelodyByName(melodyName);
+    if (melody != nullptr) {
+        player.playAsync(*melody);
+    } else {
+        Serial.println("Melody not found: " + melodyName);
+    }
+}
+
+const String melodyNames[] = {
+    "Pattern 1",
+    "Pattern 2",
+    "Pattern 3",
+    "Pattern 4",
+    "Pattern 5",
+    "Alarming Melody",
+    "Low Tone Beep",
+    "R2-D2 Happy Beeps",
+    "R2-D2 Sad Whistle",
+    "R2-D2 Angry Beeps",
+    "R2-D2 Surprise",
+    "R2-D2 Theme"
 };
 
-// Define a fixed duration in milliseconds for all notes
-const int fixedDuration = 400; // Adjust this value as needed
-
-// Calculate the size of the melodyFrequencies array
-const int melodyLength = sizeof(melodyFrequencies) / sizeof(melodyFrequencies[0]);
-
-Melody yourMelody = MelodyFactory.load("Your Melody", 100, melodyFrequencies, fixedDuration, melodyLength);
-
+const int numberOfMelodies = sizeof(melodyNames) / sizeof(melodyNames[0]);
 
 
 #endif // ALARM_MELODIES_H
