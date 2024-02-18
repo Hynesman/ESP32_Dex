@@ -70,7 +70,7 @@ struct ALARMSV {
     std::vector<ALARM_STRUCT> alarms = {
         {"ReallyHigh", true, true, true, true, true, 13.3, COLOR_RED, 3},
         {"High", true, true, true, true, true, 10.0, COLOR_YELLOW, 3},
-        {"Low", true, true, true, true, false, 3.99, COLOR_PURPLE, 3},
+        {"Low", true, true, true, true, false, 4.0, COLOR_PURPLE, 3},
         {"LowLow", true, true, true, true, false, 3.3, COLOR_RED, 3}
     };
 };
