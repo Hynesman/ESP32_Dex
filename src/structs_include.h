@@ -55,7 +55,7 @@ struct ALARM_STRUCT{
     bool high_alarm;
     double level;
     int ledColorRed, ledColorGreen, ledColorBlue; // RGB values for the LED color
-    String soundName;
+    int soundName;
 };
 
 /*
@@ -68,10 +68,10 @@ struct ALARMS {
 
 struct ALARMSV {
     std::vector<ALARM_STRUCT> alarms = {
-        {"ReallyHigh", true, true, true, true, true, 13.3, COLOR_RED, "Pattern 4"},
-        {"High", true, true, true, true, true, 10.0, COLOR_YELLOW, "Pattern 4"},
-        {"Low", true, true, true, true, false, 3.99, COLOR_PURPLE, "Pattern 4"},
-        {"LowLow", true, true, true, true, false, 3.3, COLOR_RED, "Pattern 4"}
+        {"ReallyHigh", true, true, true, true, true, 13.3, COLOR_RED, 3},
+        {"High", true, true, true, true, true, 10.0, COLOR_YELLOW, 3},
+        {"Low", true, true, true, true, false, 3.99, COLOR_PURPLE, 3},
+        {"LowLow", true, true, true, true, false, 3.3, COLOR_RED, 3}
     };
 };
 struct Status {

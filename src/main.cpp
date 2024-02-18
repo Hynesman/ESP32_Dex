@@ -13,6 +13,11 @@
 #include <SPIFFS.h>
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
+#include <Update.h>
+#include <WebServer.h>
+#include "Html_scripts.h"
+WebServer server(80);
+
 #include "structs_include.h"
 #include "RGBLED.h"
 
@@ -120,6 +125,56 @@ const unsigned long SnoozeDuration = 5 * 60 * 1000; // min Snooze duration in mi
 // possible changable values
 double SIGNAL_LOST_MIN = 10.01;
 
+void startEnhancedOTAWebServer()
+{
+  server.on("/", HTTP_GET, []()
+            {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/html", uploadPage); });
+  // Serve files from the root directory ("/") of SPIFFS
+  server.on(
+      "/update", HTTP_POST, []()
+      {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/html", Update.hasError() ? failedPage : successPage);
+    ESP.restart(); },
+      []()
+      {
+        HTTPUpload &upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START)
+        {
+          Serial.printf("Update: %s\n", upload.filename.c_str());
+          if (!Update.begin(UPDATE_SIZE_UNKNOWN))
+          {
+            Update.printError(Serial);
+          }
+        }
+        else if (upload.status == UPLOAD_FILE_WRITE)
+        {
+          if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
+          {
+            Update.printError(Serial);
+          }
+        }
+        else if (upload.status == UPLOAD_FILE_END)
+        {
+          if (Update.end(true))
+          {
+            Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+          }
+          else
+          {
+            Update.printError(Serial);
+          }
+        }
+      });
+
+
+  // Serve files from the root directory ("/") of SPIFFS
+  server.serveStatic("/", SPIFFS, "/");
+  server.begin();
+}
+
 bool Load_from_WM()
 {
   strcpy(D_User, Dexcom_Username.getValue());
@@ -156,6 +211,12 @@ String serializeAlarmStruct(const ALARM_STRUCT &alarm)
 void saveConfigFile()
 // Save Config in JSON format
 {
+  if (!SPIFFS.begin())
+  {
+    Serial.println("Failed to mount FS");
+    return;
+  }
+  Serial.println("Mounted File System");
   Serial.println(F("Saving configuration..."));
 
   char buffer[DOUBLE_STRING_SIZE];
@@ -219,12 +280,12 @@ void deserializeAlarmStruct(const JsonObject &json, ALARM_STRUCT &alarm)
   alarm.ledColorRed = json["ledColorRed"].as<int>();
   alarm.ledColorGreen = json["ledColorGreen"].as<int>();
   alarm.ledColorBlue = json["ledColorBlue"].as<int>();
-  alarm.soundName = json["soundName"].as<const char *>();
+  alarm.soundName = json["soundName"].as<int>();
 }
 
 bool loadConfigFile()
 {
-   //SPIFFS.format();
+  // SPIFFS.format();
   if (!SPIFFS.begin())
   {
     Serial.println("Failed to mount FS");
@@ -524,7 +585,6 @@ void Access_point()
   else
   {
     // If we get here, we are connected to the WiFi
-
     Serial.println("");
     Serial.println("WiFi connected");
     Serial.print("IP address: ");
@@ -564,132 +624,6 @@ void Access_point()
   }
   return;
 }
-
-/*const unsigned char *Trend_to_image(const char *trend_char)
-{
-  if (trend_char == nullptr)
-  {
-    return arrowsdash;
-  }
-  else if (strcmp(trend_char, "^^") == 0)
-  {
-    return arrowsupup;
-  }
-  else if (strcmp(trend_char, "^") == 0)
-  {
-    return arrowsup;
-  }
-  else if (strcmp(trend_char, "/^") == 0)
-  {
-    return arrowssup;
-  }
-  else if (strcmp(trend_char, "->") == 0)
-  {
-    return arrowseven;
-  }
-  else if (strcmp(trend_char, "\\v") == 0)
-  {
-    return arrowssdown;
-  }
-  else if (strcmp(trend_char, "v") == 0)
-  {
-    return arrowsdown;
-  }
-  else if (strcmp(trend_char, "vv") == 0)
-  {
-    return arrowsdowndown;
-  }
-  else if (strcmp(trend_char, "?") == 0)
-  {
-    return arrowsQ;
-  }
-  else if (strcmp(trend_char, "-") == 0)
-  {
-    return arrowsdash;
-  }
-  else
-  {
-    return arrowsQ;
-  }
-}*/
-
-/*
-void normal_mode()
-{
-  if (Home_values.minutes_since > SIGNAL_LOST_MIN)
-  {
-    rgb.setColor(COLOR_BLUE_DIMMEST);
-  }
-  else if (Home_values.mmol_l > alarmsV.alarms[1].level && Home_values.mmol_l < alarmsV.alarms[0].level)
-  {
-    rgb.setColor(COLOR_YELLOW_DIMMEST);
-  }
-  else if (Home_values.mmol_l >= alarmsV.alarms[1].level)
-  {
-    rgb.setColor(COLOR_RED_DIMMEST);
-  }
-  else if (Home_values.mmol_l <= alarmsV.alarms[2].level && Home_values.mmol_l > alarmsV.alarms[3].level)
-  {
-    rgb.setColor(COLOR_PURPLE_DIMMEST);
-  }
-  else if (Home_values.mmol_l <= alarmsV.alarms[3].level)
-  {
-    rgb.setColor(COLOR_RED_DIMMEST);
-  }
-  else
-  {
-    rgb.turnOff();
-  }
-}
-
-void High_Lights()
-{
-  if (Home_values.minutes_since > SIGNAL_LOST_MIN)
-  {
-    rgb.setColor(COLOR_BLUE);
-    // TODO  Need a sound here.  maybe less persistant
-  }
-  else if (Home_values.mmol_l > alarmsV.alarms[1].level && Home_values.mmol_l < alarmsV.alarms[0].level)
-  {
-    rgb.setColor(COLOR_YELLOW);
-    if (!player.isPlaying())
-    {
-      player.playAsync(melody4);
-    }
-  }
-  else if (Home_values.mmol_l >= alarmsV.alarms[1].level)
-  {
-    rgb.setColor(COLOR_RED);
-    if (!player.isPlaying())
-    {
-      player.playAsync(melody4);
-    }
-  }
-  else if (Home_values.mmol_l <= alarmsV.alarms[2].level && Home_values.mmol_l > alarmsV.alarms[3].level)
-  {
-    rgb.setColor(COLOR_PURPLE);
-    if (!player.isPlaying())
-    {
-      player.playAsync(melody4);
-    }
-  }
-  else if (Home_values.mmol_l <= alarmsV.alarms[3].level)
-  {
-    rgb.setColor(COLOR_RED);
-    if (!player.isPlaying())
-    {
-      player.playAsync(melody4);
-    }
-  }
-  else
-  {
-    rgb.turnOff();
-    if (player.isPlaying())
-    {
-      player.stop();
-    }
-  }
-}*/
 
 bool isAlarmConditionMet(const ALARM_STRUCT &alarm, double currentGlucoseLevel)
 {
@@ -743,20 +677,20 @@ void Alarm_handler(void *pvParameters)
   bool blinktoggle = false;
   double lastBG = 0.00;
   bool allowcontinuous = true;
-  //minutes since home_values.minutessince
+  // minutes since home_values.minutessince
   while (true)
   {
     const ALARM_STRUCT *criticalAlarm = getMostCriticalActiveAlarm(Home_values.mmol_l);
-    if (criticalAlarm)
+    bool missedSignal = Home_values.minutes_since > 10.02;
+    if (criticalAlarm && !missedSignal)
     {
       if (!Snoozing && !blinktoggle)
       {
         rgb.setColor(criticalAlarm->ledColorRed / 3, criticalAlarm->ledColorGreen / 3, criticalAlarm->ledColorBlue / 3);
 
-
-        if (allowcontinuous && !player.isPlaying() && criticalAlarm->playsound )
+        if (allowcontinuous && !player.isPlaying() && criticalAlarm->playsound)
         {
-          playMelodyByName(player, criticalAlarm->soundName);
+          playMelodyByName(player, melodyNames[criticalAlarm->soundName]);
           allowcontinuous = false;
         }
         if (criticalAlarm->Blink)
@@ -773,13 +707,20 @@ void Alarm_handler(void *pvParameters)
         }
         blinktoggle = !blinktoggle;
       }
-      if (criticalAlarm->continuous){
+      if (criticalAlarm->continuous)
+      {
         allowcontinuous = true;
       }
-      else if (Home_values.mmol_l != lastBG){
+      else if (Home_values.mmol_l != lastBG)
+      {
         allowcontinuous = true;
       }
       lastBG = Home_values.mmol_l;
+    }
+    else if (missedSignal)
+    {
+      // Handle missed signal scenario
+      rgb.setColor(COLOR_BLUE_DIMMEST); // Use a distinct color to indicate signal loss
     }
     else
     {
@@ -827,86 +768,6 @@ void Alarm_handler(void *pvParameters)
   }
 }
 
-/*void Alarm_handlerOLD(void *pvParameters)
-{
-  bool blinkbool = true;
-  int count = 0;
-  while (true)
-  {
-    if (!AlarmsEnable)
-    {
-      normal_mode();
-    }
-    else
-    {
-      if (Snoozing)
-      {
-        normal_mode();
-        if (player.isPlaying())
-        {
-          player.stop();
-        }
-      }
-      else
-      {
-        if (blinkbool)
-        {
-          High_Lights();
-        }
-        else
-        {
-          normal_mode();
-        }
-        if (count >= 1)
-        {
-          blinkbool = !blinkbool;
-          count = 0;
-        }
-        else
-        {
-          count++;
-        }
-      }
-    }
-
-    // Check for button signal to activate snooze
-    if (buttons == Button::SNOOZE_PLUS) // Implement this function to detect button press
-    {
-      buttons = Button::NOTHING;
-      if (Snoozing)
-      {
-        SnoozeEndTime += SnoozeDuration;
-      }
-      else
-      {
-        Snoozing = true;
-        SnoozeEndTime = millis() + SnoozeDuration;
-      }
-    }
-    else if (buttons == Button::SNOOZE_MINUS)
-    {
-      buttons = Button::NOTHING;
-      if (Snoozing)
-      {
-        SnoozeEndTime -= SnoozeDuration;
-        if (SnoozeEndTime < millis())
-        {
-          Snoozing = false;
-        }
-      }
-    }
-
-    // Check if snooze timer has expired
-    if (Snoozing && millis() >= SnoozeEndTime)
-    {
-      Snoozing = false;
-      SnoozeEndTime = 0;
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(250));
-  }
-}*/
-
 void Homescreen_display()
 {
   unsigned long currentTime = ntpClient.getEpochTime();
@@ -927,12 +788,6 @@ void Homescreen_display()
   int offset1 = display.getCursorX();
   display.println();
 
-  // display.print(" ");  // using custom symbols instead of this code
-  // display.setTextSize(3);
-  // display.print(Home_values.trend_Symbol);
-  // display.setTextSize(4);
-  // display.println("");
-  // display.setCursor(0,40);
   display.setTextSize(1);
   int offset2 = display.getCursorY();
 
@@ -971,16 +826,6 @@ void Homescreen_display()
   display.display();
   return;
 }
-/*
-void Settings()
-{
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("Settings");
-  display.display();
-}*/
 
 unsigned int selectedMenuItem = 0;
 unsigned int sub_item = 0;
@@ -989,7 +834,6 @@ bool sub_menu = false;
 bool selectedItemBlink = false;
 u8_t blinkCount = 0;
 bool valuesChanged = false;
-const char *menuItems[10] = {alarmsV.alarms[0].name.c_str(), alarmsV.alarms[1].name.c_str(), alarmsV.alarms[2].name.c_str(), alarmsV.alarms[3].name.c_str()};
 
 //***********************************************************************************************************
 void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int sub_item = 0, bool sub_menu_item_selected = false, int increment = 0)
@@ -1003,30 +847,27 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
   {
     display.println("Alarm Settings");
 
-    for (int i = 0; i < numMenuItems; i++)
+    // Dynamically generate menu items based on alarmsV.alarms
+    for (size_t i = 0; i < alarmsV.alarms.size(); i++)
     {
-      if ((selectedItem) < numMenuItems)
+      if (i == selectedItem)
       {
-        int item = (i) % numMenuItems;
-        if (item == selectedItem)
-        {
-          display.setFont();
-          display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Highlight selected item
-          display.setTextSize(1);
-        }
-        else
-        {
-          display.setFont(&TomThumb);
-          display.setTextColor(SSD1306_WHITE);
-          display.setTextSize(1);
-        }
-
-        // display.setCursor(0, i * 16);
-        display.print(" ");
-        display.print(menuItems[item]);
-        display.println(" ");
+        display.setFont();                                  // Use normal font for selected item
+        display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Highlight selected item
       }
+      else
+      {
+        display.setFont(&TomThumb); // Use smaller font for unselected items
+        display.setTextColor(SSD1306_WHITE);
+      }
+      display.print(" ");
+      display.print(alarmsV.alarms[i].name); // Display the name of each alarm
+      display.println("");
     }
+    display.setFont();
+    display.setTextColor(SSD1306_WHITE);
+    display.println();
+    display.println(WiFi.localIP());
   }
   else
   {
@@ -1035,15 +876,17 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
     display.println(alarmsV.alarms[selectedItem].name); // Display title
 
     // Array or list of submenu items related to the alarm
-    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound"};
-    const char *subMenuValues[] = {
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody"};
+    String subMenuValues[] = {
         alarmsV.alarms[selectedItem].active ? "Yes" : "No",
         dtostrf(alarmsV.alarms[selectedItem].level, 1, 2, buffer), // Assuming level is a float, adjust precision as needed
         alarmsV.alarms[selectedItem].continuous ? "Yes" : "once",
         alarmsV.alarms[selectedItem].Blink ? "Yes" : "No",
-        alarmsV.alarms[selectedItem].playsound ? "Yes" : "No"};
+        alarmsV.alarms[selectedItem].playsound ? "Yes" : "No",
+        melodyNames[alarmsV.alarms[selectedItem].soundName]};
+    const int numbersubs = 6;
 
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < numbersubs; i++)
     { // Adjust the loop condition based on the number of submenu items
       if (i == sub_item)
       {
@@ -1071,7 +914,15 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
           {
             alarmsV.alarms[selectedItem].playsound = !alarmsV.alarms[selectedItem].playsound;
           }
-
+          else if (i == 5)
+          {
+            int newValue = (alarmsV.alarms[selectedItem].soundName + increment) % numberOfMelodies;
+            if (newValue < 0)
+            {
+              newValue = numberOfMelodies - 1;
+            }
+            alarmsV.alarms[selectedItem].soundName = newValue;
+          }
         }
         if (sub_menu_item_selected)
         {
@@ -1353,9 +1204,9 @@ void StateLoopTask(void *pvParameters)
         }
         else if (buttons == Button::DOWN)
         {
-          if (sub_item != 5 - 1)
+          if (sub_item != 6 - 1)
           {
-            sub_item = (sub_item + 1) % 5;
+            sub_item = (sub_item + 1) % 6;
           }
           buttons = Button::NOTHING;
         }
@@ -1363,7 +1214,7 @@ void StateLoopTask(void *pvParameters)
         {
           if (sub_item != 0)
           {
-            sub_item = (sub_item - 1) % 5;
+            sub_item = (sub_item - 1) % 6;
           }
           buttons = Button::NOTHING;
         }
@@ -1395,6 +1246,8 @@ void StateLoopTask(void *pvParameters)
         }
         else if (buttons == Button::SELECT)
         {
+          playMelodyByName(player, melodyNames[alarmsV.alarms[selectedMenuItem].soundName]);
+          rgb.setColor(alarmsV.alarms[selectedMenuItem].ledColorRed, alarmsV.alarms[selectedMenuItem].ledColorGreen, alarmsV.alarms[selectedMenuItem].ledColorBlue);
           buttons = Button::NOTHING;
         }
       }
@@ -1411,6 +1264,7 @@ void StateLoopTask(void *pvParameters)
       Serial.println("Invalid state encountered");
       break;
     }
+    server.handleClient();
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
@@ -1430,12 +1284,9 @@ void setup()
 
   // rgb
   rgb.setColor(COLOR_PURPLE_DIM); // RED
-  // player.playAsync(lowToneBeepMelody);
   //  Buttons
-  //  AP manual trigger
   pinMode(TRIGGER_AP_PIN, INPUT);
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
-
   pinMode(SELECT_PIN, INPUT);
   attachInterrupt(SELECT_PIN, SelectPinHandler, FALLING);
   pinMode(BACK_PIN, INPUT);
@@ -1444,7 +1295,6 @@ void setup()
   attachInterrupt(SNOOZE_PIN_PLUS, SnoozeHandler, FALLING);
   pinMode(SNOOZE_PIN_MINUS, INPUT);
   attachInterrupt(SNOOZE_PIN_MINUS, SnoozeHandler_Minus, FALLING);
-  // Display toggle
   pinMode(RIGHT_PIN, INPUT);
   attachInterrupt(RIGHT_PIN, RightPinHandler, FALLING);
   pinMode(LEFT_PIN, INPUT);
@@ -1453,9 +1303,6 @@ void setup()
   attachInterrupt(UP_PIN, UpPinHandler, FALLING);
   pinMode(DOWN_PIN, INPUT);
   attachInterrupt(DOWN_PIN, DownPinHandler, FALLING);
-
-  // Buzzer Test at startup
-  // player.playAsync(melody3);
 
   // Initialize OLED display
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
@@ -1466,14 +1313,17 @@ void setup()
   }
   display.clearDisplay();
   // Set font
+  display.dim(true);
 
   // display.drawBitmap(0, 0, Dexcom_follow_screen, 128, 64, WHITE);
-  display.drawBitmap(0, 0, logo2, 128, 64, WHITE);
+  display.drawBitmap(0, 0, epd_bitmap_logo, 128, 64, WHITE);
 
   display.display();
 
   // Change to true when testing to force configuration every time we run
   bool forceConfig = false;
+
+  // saveConfigFile();
 
   bool spiffsSetup = loadConfigFile();
   if (!spiffsSetup)
@@ -1482,12 +1332,8 @@ void setup()
     forceConfig = true;
   }
 
-  // player.playAsync(yourMelody);
-
   // Explicitly set WiFi mode
   WiFi.mode(WIFI_STA);
-
-  // delay(5000);
 
   // Reset settings (only for development)
   // wm.resetSettings();
@@ -1508,16 +1354,21 @@ void setup()
     addCustomParameter(alarmsV.alarms[i].name.c_str(), alarmsV.alarms[i].name.c_str(), dtostrf(alarmsV.alarms[i].level, 1, 2, buffer), DOUBLE_STRING_SIZE, wm, customParameters);
   }
 
-  // wm.addParameter(&LOWLOW_ALARM);
-  // wm.addParameter(&LOW_ALARM);
-  // wm.addParameter(&HIGH_ALARM);
-  // wm.addParameter(&HIGHHIGH_ALARM);
-
   // rgb
   rgb.setColor(COLOR_BLUE_DIM); // Blue
   if (forceConfig)
   // Run if we need a configuration
   {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("Connect to:");
+    display.setTextSize(2);
+    display.println(" \"Glucose Follower\"");
+    display.setTextSize(1);
+    display.println("to choose Wifi and\nDexcom Credentials");
+    display.display();
     if (!wm.startConfigPortal("Glucose Follower"))
     {
       Serial.println("failed to connect and hit timeout");
@@ -1549,15 +1400,6 @@ void setup()
   // Lets deal with the user config values
 
   Load_from_WM();
-  // Copy the string value
-  // strncpy(D_User, Dexcom_Username.getValue(), sizeof(D_User));
-  // Serial.print("D_User: ");
-  // Serial.println(D_User);
-
-  // Convert the number value
-  // strncpy(D_Pass, Dexcom_Password.getValue(), sizeof(D_Pass));
-  // Serial.print("D_Pass: ");
-  // Serial.println(D_Pass);
 
   follower.Set_user_pass(D_User, D_Pass);
   follower.getNewSessionID();
@@ -1592,7 +1434,8 @@ void setup()
   // ntpClient.setTimeOffset(follower.TZ_offset);
   // ntpClient.update();
   //  rgb.setColor(COLOR_YELLOW_DIM); //Yellow
-
+  // startOTAWebServer();
+  startEnhancedOTAWebServer();
   // Create and start the glucose update task
   xTaskCreate(glucoseUpdateTask, "GlucoseUpdateTask", 8192, NULL, 2, NULL);
   xTaskCreate(StateLoopTask, "StateLoop", 8192, NULL, 1, NULL);

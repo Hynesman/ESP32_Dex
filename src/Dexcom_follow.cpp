@@ -379,3 +379,21 @@ bool Follower::GlucoseLevelsArrayPopulate()
     }
     return result;
 };
+
+String Follower::serializeGlucoseReadings(const GlucoseReading glucoseReadings[]) {
+    DynamicJsonDocument doc(1024); // Adjust size based on your needs
+    JsonArray readings = doc.to<JsonArray>();
+
+    for (size_t i = 0; i < CASHED_READINGS; ++i) {
+        JsonObject readingObj = readings.createNestedObject();
+        readingObj["timestamp"] = glucoseReadings[i].timestamp;
+        readingObj["mg_dl"] = glucoseReadings[i].mg_dl;
+        readingObj["mmol_l"] = glucoseReadings[i].mmol_l;
+        readingObj["trend_description"] = glucoseReadings[i].trend_description ? glucoseReadings[i].trend_description : "";
+        readingObj["trend_Symbol"] = glucoseReadings[i].trend_Symbol ? glucoseReadings[i].trend_Symbol : "";
+    }
+
+    String jsonString;
+    serializeJson(doc, jsonString);
+    return jsonString;
+}
