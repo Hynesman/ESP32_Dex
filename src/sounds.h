@@ -91,6 +91,53 @@ Melody melodyLullabyWhispers = MelodyFactory.load("Lullaby Whispers", 60, lullab
 String starlightWaltz[] = {"C4", "E4", "G4", "C5", "G4", "E4", "C4", "G3", "SILENCE"};
 Melody melodyStarlightWaltz = MelodyFactory.load("Starlight Waltz", 108, starlightWaltz, 9);
 
+String laserZapNotes[] = {
+    "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "F5", "G5", "A5", "B5", "C6", "B5", "A5", "G5", "F5", "E5", "D5", "C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4", "SILENCE",
+    "G6", "SILENCE", "G6", "SILENCE", // High-pitched start
+    "E6", "SILENCE",                  // Slight drop in pitch to simulate the toy's crackle
+    "G6", "SILENCE", "G6", "SILENCE", // Repeat for emphasis
+    "D6", "SILENCE",                  // Another slight drop for effect
+    "G6", "SILENCE",                   // Final high-pitched note
+    "G6", "SILENCE", "G6", "SILENCE", // High-pitched start
+    "E6", "SILENCE",                  // Slight drop in pitch to simulate the toy's crackle
+    "G6", "SILENCE", "G6", "SILENCE", // Repeat for emphasis
+    "D6", "SILENCE",                  // Another slight drop for effect
+    "G6", "SILENCE",                   // Final high-pitched note
+    //"C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "F5", "G5", "A5", "B5", "C6", "B5", "A5", "G5", "F5", "E5", "D5", "C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4", "SILENCE"
+    "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE", "SILENCE"
+};
+Melody laserZap = MelodyFactory.load("Laser Zap", 5, laserZapNotes, sizeof(laserZapNotes) / sizeof(laserZapNotes[0]));
+
+String wakeUpNotes[] = {
+    // "Wake" part, gradual rise
+    "E4", "E4", "F4", "F4", "G4", "G4", "A4", "A4",
+    "A4", "A4", "G4", "G4", "F4", "F4", "E4", "E4",
+    "SILENCE", "SILENCE", "SILENCE", "SILENCE",
+    // "up" part, more pronounced and higher
+    "G4", "A4", "B4", "C5", "D5", "E5", "F5", "G5",
+    "A5", "B5", "C6", "D6", "E6", "F6", "G6", "A6",
+    "G6", "F6", "E6", "D6", "C6", "B5", "A5", "G5",
+    "F5", "E5", "D5", "C5", "B4", "A4", "G4",
+    "SILENCE", "SILENCE", "SILENCE", "SILENCE",
+};
+
+// Assuming a time unit of 5ms for each note to create the rhythm and pace of saying "wake up".
+Melody wakeUp = MelodyFactory.load("Wake Up Detailed", 5, wakeUpNotes, sizeof(wakeUpNotes) / sizeof(wakeUpNotes[0]));
+
+const String melodyNames[] = {
+    "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5",
+    "Alarming Melody", "Low Tone Beep", "R2-D2 Happy Beeps", "R2-D2 Sad Whistle",
+    "R2-D2 Angry Beeps", "R2-D2 Surprise", "R2-D2 Theme",
+    "Rising and Falling", "Sprints", "Gentle Waves", "Echoes", "Mystic Journey",
+    "Pop Pulse", "Electro Groove", "Acoustic Vibes", "Chill Wave", "Urban Nights",
+    "Whimsical Jumps", "Mystic Echoes", "Spirited Chase", "Lullaby Whispers", "Starlight Waltz",
+    "laserZap", "wakeUp","RandumEachTime"
+};
+
+
+int numberOfMelodies = sizeof(melodyNames) / sizeof(melodyNames[0]);
+
+
 
 Melody* getMelodyByName(const String& name) {
     // Original Variations and Special Melodies
@@ -122,6 +169,13 @@ Melody* getMelodyByName(const String& name) {
     else if (name == "Spirited Chase") return &melodySpiritedChase;
     else if (name == "Lullaby Whispers") return &melodyLullabyWhispers;
     else if (name == "Starlight Waltz") return &melodyStarlightWaltz;
+    else if (name == "laserZap") return &laserZap;
+    else if (name == "wakeUp") return &wakeUp;
+    else if (name == "RandumEachTime"){
+        //return getMelodyByName(melodyNames[(rand()/RAND_MAX)*(numberOfMelodies-1)]);
+        int randomIndex = static_cast<int>((static_cast<double>(rand()) / static_cast<double>(RAND_MAX)) * (numberOfMelodies - 1));
+        return getMelodyByName(melodyNames[randomIndex]);
+    }
     // If no match is found
     else return nullptr;
 }
@@ -137,17 +191,7 @@ void playMelodyByName(MelodyPlayer& player, const String& melodyName) {
     }
 }
 
-const String melodyNames[] = {
-    "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5",
-    "Alarming Melody", "Low Tone Beep", "R2-D2 Happy Beeps", "R2-D2 Sad Whistle",
-    "R2-D2 Angry Beeps", "R2-D2 Surprise", "R2-D2 Theme",
-    "Rising and Falling", "Sprints", "Gentle Waves", "Echoes", "Mystic Journey",
-    "Pop Pulse", "Electro Groove", "Acoustic Vibes", "Chill Wave", "Urban Nights",
-    "Whimsical Jumps", "Mystic Echoes", "Spirited Chase", "Lullaby Whispers", "Starlight Waltz"
-};
 
-
-int numberOfMelodies = sizeof(melodyNames) / sizeof(melodyNames[0]);
 
 
 #endif // ALARM_MELODIES_H

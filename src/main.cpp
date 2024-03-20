@@ -53,8 +53,8 @@ int numMenuItems = alarmsV.alarms.size();
 char buffer[DOUBLE_STRING_SIZE];
 
 // Text box (String) - 50 characters maximum
-WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom username", D_User, 50);
-WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Username", D_Pass, 50);
+WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom Username", D_User, 50);
+WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Password", D_Pass, 50);
 std::vector<WiFiManagerParameter *> customParameters;
 // Text boxes for double values
 WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name.c_str(), alarmsV.alarms[0].name.c_str(), dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
@@ -199,9 +199,7 @@ String serializeAlarmStruct(const ALARM_STRUCT &alarm)
   doc["Blink"] = alarm.Blink;
   doc["high_alarm"] = alarm.high_alarm;
   doc["level"] = alarm.level;
-  doc["ledColorRed"] = alarm.ledColorRed;
-  doc["ledColorGreen"] = alarm.ledColorGreen;
-  doc["ledColorBlue"] = alarm.ledColorBlue;
+  doc["colorArrayPos"] = alarm.colorArrayPos;
   doc["soundName"] = alarm.soundName;
   String output;
   serializeJson(doc, output);
@@ -277,9 +275,7 @@ void deserializeAlarmStruct(const JsonObject &json, ALARM_STRUCT &alarm)
   alarm.Blink = json["Blink"].as<bool>();
   alarm.high_alarm = json["high_alarm"].as<bool>();
   alarm.level = json["level"].as<double>();
-  alarm.ledColorRed = json["ledColorRed"].as<int>();
-  alarm.ledColorGreen = json["ledColorGreen"].as<int>();
-  alarm.ledColorBlue = json["ledColorBlue"].as<int>();
+  alarm.colorArrayPos = json["colorArrayPos"].as<int>();
   alarm.soundName = json["soundName"].as<int>();
 }
 
@@ -686,7 +682,10 @@ void Alarm_handler(void *pvParameters)
     {
       if (!Snoozing && !blinktoggle)
       {
-        rgb.setColor(criticalAlarm->ledColorRed / 3, criticalAlarm->ledColorGreen / 3, criticalAlarm->ledColorBlue / 3);
+        //const int SomeColor[3] = {colorValues[criticalAlarm->colorArrayPos]};
+        rgb.setColor(colorValues[criticalAlarm->colorArrayPos][0]/6, // Red
+             colorValues[criticalAlarm->colorArrayPos][1]/6, // Green
+             colorValues[criticalAlarm->colorArrayPos][2]/6); // Blue
 
         if (allowcontinuous && !player.isPlaying() && criticalAlarm->playsound)
         {
@@ -700,7 +699,10 @@ void Alarm_handler(void *pvParameters)
       }
       else
       {
-        rgb.setColor(criticalAlarm->ledColorRed / 10, criticalAlarm->ledColorGreen / 10, criticalAlarm->ledColorBlue / 10);
+        rgb.setColor(colorValues[criticalAlarm->colorArrayPos][0]/10, // Red
+             colorValues[criticalAlarm->colorArrayPos][1]/10, // Green
+             colorValues[criticalAlarm->colorArrayPos][2]/10); // Blue
+        
         if (!player.isPlaying() && Snoozing)
         {
           player.stop();
@@ -876,15 +878,16 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
     display.println(alarmsV.alarms[selectedItem].name); // Display title
 
     // Array or list of submenu items related to the alarm
-    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody"};
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody","Color"};
     String subMenuValues[] = {
         alarmsV.alarms[selectedItem].active ? "Yes" : "No",
         dtostrf(alarmsV.alarms[selectedItem].level, 1, 2, buffer), // Assuming level is a float, adjust precision as needed
         alarmsV.alarms[selectedItem].continuous ? "Yes" : "once",
         alarmsV.alarms[selectedItem].Blink ? "Yes" : "No",
         alarmsV.alarms[selectedItem].playsound ? "Yes" : "No",
-        melodyNames[alarmsV.alarms[selectedItem].soundName]};
-    const int numbersubs = 6;
+        melodyNames[alarmsV.alarms[selectedItem].soundName],
+        colorNames[alarmsV.alarms[selectedItem].colorArrayPos]};
+    const int numbersubs = 7;
 
     for (int i = 0; i < numbersubs; i++)
     { // Adjust the loop condition based on the number of submenu items
@@ -923,6 +926,16 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
             }
             alarmsV.alarms[selectedItem].soundName = newValue;
           }
+          else if (i == 6)
+          {
+            int newValue = (alarmsV.alarms[selectedItem].colorArrayPos + increment) % numberOfColors;
+            if (newValue < 0)
+            {
+              newValue = numberOfColors - 1;
+            }
+            alarmsV.alarms[selectedItem].colorArrayPos = newValue;
+          }
+
         }
         if (sub_menu_item_selected)
         {
@@ -1204,9 +1217,9 @@ void StateLoopTask(void *pvParameters)
         }
         else if (buttons == Button::DOWN)
         {
-          if (sub_item != 6 - 1)
+          if (sub_item != 7 - 1)
           {
-            sub_item = (sub_item + 1) % 6;
+            sub_item = (sub_item + 1) % 7;
           }
           buttons = Button::NOTHING;
         }
@@ -1214,7 +1227,7 @@ void StateLoopTask(void *pvParameters)
         {
           if (sub_item != 0)
           {
-            sub_item = (sub_item - 1) % 6;
+            sub_item = (sub_item - 1) % 7;
           }
           buttons = Button::NOTHING;
         }
@@ -1247,7 +1260,10 @@ void StateLoopTask(void *pvParameters)
         else if (buttons == Button::SELECT)
         {
           playMelodyByName(player, melodyNames[alarmsV.alarms[selectedMenuItem].soundName]);
-          rgb.setColor(alarmsV.alarms[selectedMenuItem].ledColorRed, alarmsV.alarms[selectedMenuItem].ledColorGreen, alarmsV.alarms[selectedMenuItem].ledColorBlue);
+          rgb.setColor(colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][0]/7, // Red
+             colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][1]/7, // Green
+             colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][2]/7); // Blue
+          //rgb.setColor(alarmsV.alarms[selectedMenuItem].ledColorRed, alarmsV.alarms[selectedMenuItem].ledColorGreen, alarmsV.alarms[selectedMenuItem].ledColorBlue);
           buttons = Button::NOTHING;
         }
       }
@@ -1320,6 +1336,8 @@ void setup()
 
   display.display();
 
+
+  srand(time(NULL));
   // Change to true when testing to force configuration every time we run
   bool forceConfig = false;
 
