@@ -1,5 +1,4 @@
 #define ESP_DRD_USE_SPIFFS true
-#include "hwdef.h"
 #include "Arduino.h"
 #include <WiFi.h>
 #include <Wire.h>
@@ -20,14 +19,12 @@
 WebServer server(80);
 
 #include "structs_include.h"
-#if !defined NO_RGBLED
 #include "RGBLED.h"
-#endif
 
 #include <melody_player.h>
 #include <melody_factory.h>
 #include "sounds.h"
-
+#define BUZZZER_PIN 18
 MelodyPlayer player(BUZZZER_PIN, 3, LOW);
 
 bool AlarmsEnable = true;
@@ -70,19 +67,36 @@ bool just_wait = false;
 WiFiManager wm;
 int timeout = 120;
 
-#if !defined NO_RGBLED
-RGBLED rgb(R_PIN, G_PIN, B_PIN);
-#endif
+#define R_PIN 17
+#define G_PIN 16
+#define B_PIN 5
 
+RGBLED rgb(R_PIN, G_PIN, B_PIN);
+
+#define TRIGGER_AP_PIN 4
 bool Launch_AP = false;
 
 int Hours_Shown_On_Graph = 3;
 #define MAX_HOURS 24
 #define MIN_HOURS 1
 
+// Buttons
+#define SELECT_PIN 14
+#define BACK_PIN 12
+#define RIGHT_PIN 33
+#define LEFT_PIN 25
+#define UP_PIN 27
+#define DOWN_PIN 26
+#define SNOOZE_PIN_PLUS 19
+#define SNOOZE_PIN_MINUS 23
+#define DEBOUNCE_DELAY 150
 
 Button buttons = Button::NOTHING;
 bool Next_screen = false;
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -669,11 +683,9 @@ void Alarm_handler(void *pvParameters)
       if (!Snoozing && !blinktoggle)
       {
         //const int SomeColor[3] = {colorValues[criticalAlarm->colorArrayPos]};
-#if !defined NO_RGBLED
         rgb.setColor(colorValues[criticalAlarm->colorArrayPos][0]/6, // Red
              colorValues[criticalAlarm->colorArrayPos][1]/6, // Green
              colorValues[criticalAlarm->colorArrayPos][2]/6); // Blue
-#endif
 
         if (allowcontinuous && !player.isPlaying() && criticalAlarm->playsound)
         {
@@ -687,12 +699,10 @@ void Alarm_handler(void *pvParameters)
       }
       else
       {
-#if !defined NO_RGBLED
         rgb.setColor(colorValues[criticalAlarm->colorArrayPos][0]/10, // Red
              colorValues[criticalAlarm->colorArrayPos][1]/10, // Green
              colorValues[criticalAlarm->colorArrayPos][2]/10); // Blue
-#endif
-
+        
         if (!player.isPlaying() && Snoozing)
         {
           player.stop();
@@ -712,15 +722,11 @@ void Alarm_handler(void *pvParameters)
     else if (missedSignal)
     {
       // Handle missed signal scenario
-#if !defined NO_RGBLED
       rgb.setColor(COLOR_BLUE_DIMMEST); // Use a distinct color to indicate signal loss
-#endif
     }
     else
     {
-#if !defined NO_RGBLED
       rgb.turnOff(); // No critical alarm or snoozing
-#endif
       if (!player.isPlaying())
       {
         player.stop();
@@ -1254,12 +1260,10 @@ void StateLoopTask(void *pvParameters)
         else if (buttons == Button::SELECT)
         {
           playMelodyByName(player, melodyNames[alarmsV.alarms[selectedMenuItem].soundName]);
-#if !defined NO_RGBLED
           rgb.setColor(colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][0]/7, // Red
              colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][1]/7, // Green
              colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][2]/7); // Blue
           //rgb.setColor(alarmsV.alarms[selectedMenuItem].ledColorRed, alarmsV.alarms[selectedMenuItem].ledColorGreen, alarmsV.alarms[selectedMenuItem].ledColorBlue);
-#endif
           buttons = Button::NOTHING;
         }
       }
@@ -1292,12 +1296,10 @@ void setup()
 {
   Serial.begin(115200);
 
-  Wire.begin(ESP32_SDA, ESP32_SCL);
+  Wire.begin();
 
   // rgb
-#if !defined NO_RGBLED
   rgb.setColor(COLOR_PURPLE_DIM); // RED
-#endif
   //  Buttons
   pinMode(TRIGGER_AP_PIN, INPUT);
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
@@ -1371,9 +1373,7 @@ void setup()
   }
 
   // rgb
-#if !defined NO_RGBLED
   rgb.setColor(COLOR_BLUE_DIM); // Blue
-#endif
   if (forceConfig)
   // Run if we need a configuration
   {
@@ -1435,7 +1435,7 @@ void setup()
   // Initialize NTPClient
   ntpClient.begin();
   ntpClient.update();
-  
+
   follower.getNewSessionID();
   if (!follower.SessionIDnotDefault())
   {
