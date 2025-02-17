@@ -59,6 +59,18 @@ Follower::Follower(bool ous, String user, String pass, String sessionID)
     }
 };
 
+void Follower::update_location(bool ous)
+{
+  if (ous)
+  {
+      DexcomServer = DEXCOM_BASE_URL_OUS;
+  }
+  else
+  {
+      DexcomServer = DEXCOM_BASE_URL;
+  }
+}
+
 void Follower::update_json_string()
 {
     String jsonString = "{";
@@ -175,7 +187,8 @@ bool Follower::GlucoseLevelsNow()
             GlucoseNow.mg_dl = doc[0]["Value"];
             GlucoseNow.mmol_l = convertToMmol(GlucoseNow.mg_dl);
             Serial.print("Blood Glucose Level: ");
-            Serial.println(GlucoseNow.mmol_l);
+            Serial.printf ("%d mg/dl  ", GlucoseNow.mg_dl);
+            Serial.printf ("%2.1f mmol/l\n", GlucoseNow.mmol_l);
 
             GlucoseNow.trend_description = doc[0]["Trend"].as<const char *>();
             GlucoseNow.trend_Symbol = getTrendSymbol(GlucoseNow.trend_description);

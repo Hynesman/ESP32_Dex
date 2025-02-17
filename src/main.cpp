@@ -44,8 +44,8 @@ bool Snoozing = false;
 bool shouldSaveConfig = false;
 
 // Variables to hold data from custom textboxes
-char D_User[50] = "username";
-char D_Pass[50] = "password";
+char D_User[50] = "";
+char D_Pass[50] = "";
 
 // ALARMS alarms;
 ALARMSV alarmsV;
@@ -55,9 +55,17 @@ int numMenuItems = alarmsV.alarms.size();
 // Convert double to string
 char buffer[DOUBLE_STRING_SIZE];
 
+// Located outside of USA?
+bool OutsideUsa = true;
+char customHtml_checkbox_outside_usa[50] = "type=\"checkbox\"";
+
 // Text box (String) - 50 characters maximum
 WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom Username", D_User, 50);
 WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Password", D_Pass, 50);
+// Checkbox to indicate location (in/outside USA)
+WiFiManagerParameter custom_outside_usa_checkbox("OutsideUSA", "Located Outside USA", "T", 2, customHtml_checkbox_outside_usa, WFM_LABEL_AFTER);
+WiFiManagerParameter htmlLineBreak("</br></br>");
+
 std::vector<WiFiManagerParameter *> customParameters;
 // Text boxes for double values
 WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name.c_str(), alarmsV.alarms[0].name.c_str(), dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
@@ -96,7 +104,7 @@ NTPClient ntpClient(udp, NTP_SERVER, NTP_UTC_OFFSET, NTP_UPDATE_INTERVAL);
 double glucoseValue;
 String trend = "";
 
-Follower follower(true);
+Follower follower(OutsideUsa);
 
 int error_count = 0;
 
@@ -166,6 +174,9 @@ bool Load_from_WM()
   strcpy(D_User, Dexcom_Username.getValue());
   strcpy(D_Pass, Dexcom_Password.getValue());
 
+  OutsideUsa = (strncmp(custom_outside_usa_checkbox.getValue(), "T", 1) == 0);
+  follower.update_location(OutsideUsa);
+
   // For double values, convert from string to double
   for (u8_t i = 0; i < numMenuItems; i++)
   {
@@ -206,9 +217,11 @@ void saveConfigFile()
   char buffer[DOUBLE_STRING_SIZE];
 
   // Create a JSON document
-  StaticJsonDocument<1082> json;
+  StaticJsonDocument<1120> json;
   json["D_User"] = D_User;
   json["D_Pass"] = D_Pass;
+
+  json["OutsideUsa"] = OutsideUsa;
 
   // Serialize ALARMS struct
   JsonObject alarmsJson = json.createNestedObject("alarms");
@@ -282,7 +295,7 @@ bool loadConfigFile()
       Serial.println("Failed to open configuration file");
       return false;
     }
-    StaticJsonDocument<2024> doc;
+    StaticJsonDocument<2044> doc;
     DeserializationError error = deserializeJson(doc, configFile);
     configFile.close(); // Close the file as soon as it's no longer needed
 
@@ -296,6 +309,8 @@ bool loadConfigFile()
     // Deserialize user and password as before...
     strcpy(D_User, doc["D_User"]);
     strcpy(D_Pass, doc["D_Pass"]);
+
+    OutsideUsa = doc["OutsideUsa"].as<bool>();
 
     JsonObject alarmsObject = doc["alarms"].as<JsonObject>();
     for (JsonPair kv : alarmsObject)
@@ -365,6 +380,7 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         // Display the new glucose value and trend on the OLED display
         Home_values.timestamp = follower.GlucoseNow.timestamp;
         Home_values.mmol_l = follower.GlucoseNow.mmol_l;
+        Home_values.mg_dl = follower.GlucoseNow.mg_dl;
         Home_values.trend_Symbol = follower.GlucoseNow.trend_Symbol;
         Home_values.message_2 = "";
         follower.GlucoseLevelsArrayPopulate();
@@ -415,6 +431,7 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
       {
         Home_values.timestamp = follower.GlucoseNow.timestamp;
         Home_values.mmol_l = follower.GlucoseNow.mmol_l;
+        Home_values.mg_dl = follower.GlucoseNow.mg_dl;
         Home_values.trend_Symbol = follower.GlucoseNow.trend_Symbol;
         Home_values.message_2 = "Wifi Error";
 
@@ -435,6 +452,7 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         error_count++;
         Home_values.timestamp = follower.GlucoseNow.timestamp;
         Home_values.mmol_l = follower.GlucoseNow.mmol_l;
+        Home_values.mg_dl = follower.GlucoseNow.mg_dl;
         Home_values.trend_Symbol = follower.GlucoseNow.trend_Symbol;
         Home_values.message_2 = "Error last value";
 
@@ -778,7 +796,10 @@ void Homescreen_display()
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
   char glucoseStr[10];                           // Allocate a buffer for the formatted string
-  dtostrf(Home_values.mmol_l, 2, 1, glucoseStr); // Format: total width = 4, 1 decimal place
+  if (OutsideUsa)
+    dtostrf(Home_values.mmol_l, 2, 1, glucoseStr); // Format: total width = 4, 1 decimal place
+  else
+    dtostrf(Home_values.mg_dl, 3, 0, glucoseStr); // Format: total width = 4, 0 decimal place
 
   display.print(glucoseStr);
   int offset1 = display.getCursorX();
@@ -1055,7 +1076,10 @@ void Graph_Display()
   display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
   display.setCursor(1, LowLimit - 4);
   display.setTextSize(1);
-  display.print("4");
+  if (OutsideUsa)
+    display.print("4");
+  else
+    display.print("72");
 
   int HighLimit = int(yScale * (1 - (10 - YMin) / (YMax - YMin)));
   for (int j = 0; j < SCREEN_WIDTH; j += 4) // Draw dotted line
@@ -1065,7 +1089,10 @@ void Graph_Display()
   display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
   display.setCursor(1, HighLimit - 4);
   display.setTextSize(1);
-  display.print("10");
+  if (OutsideUsa)
+    display.print("10");
+  else
+    display.print("180");
 
   display.display();
 }
@@ -1300,7 +1327,11 @@ void setup()
 #endif
   //  Buttons
   pinMode(TRIGGER_AP_PIN, INPUT);
+  #if defined DEXCOM_PCB
+  attachInterrupt(TRIGGER_AP_PIN, APintHandler, FALLING);
+  #else
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
+  #endif
   pinMode(SELECT_PIN, INPUT);
   attachInterrupt(SELECT_PIN, SelectPinHandler, FALLING);
   pinMode(BACK_PIN, INPUT);
@@ -1346,6 +1377,15 @@ void setup()
   {
     Serial.println(F("Forcing config mode as there is no saved config"));
     forceConfig = true;
+
+    // Erase SPIFFS
+    Serial.println(F("Erasing SPIFFS..."));
+    if (SPIFFS.format())
+    {
+      Serial.println(F("SPIFFS erased successfully."));
+    } else {
+      Serial.println(F("Error erasing SPIFFS."));
+    }
   }
 
   // Explicitly set WiFi mode
@@ -1359,6 +1399,16 @@ void setup()
 
   // Set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
   wm.setAPCallback(configModeCallback);
+
+  //
+  // Start adding parameters to web page for configuration
+  //
+
+  // Add checkbox to indicate in./outside USA
+  wm.addParameter(&custom_outside_usa_checkbox);
+  char ous = OutsideUsa ? 'T' : 'F';
+  custom_outside_usa_checkbox.setValue((const char *)(&ous), 1);
+  wm.addParameter(&htmlLineBreak);
 
   // Add all defined parameters
   wm.addParameter(&Dexcom_Username);
