@@ -17,7 +17,8 @@
 #include <Update.h>
 #include <WebServer.h>
 #include "Html_scripts.h"
-WebServer server(80);
+// OTA web Server - Port 81 since WifiManager uses port 80
+WebServer server(81);
 
 #include "structs_include.h"
 #if !defined NO_RGBLED
@@ -52,16 +53,17 @@ ALARMSV alarmsV;
 int numMenuItems = alarmsV.alarms.size();
 
 #define DOUBLE_STRING_SIZE 10
+#define DEXCOM_CREDS_SIZE 50
 // Convert double to string
 char buffer[DOUBLE_STRING_SIZE];
 
 // Located outside of USA?
 bool OutsideUsa = true;
-char customHtml_checkbox_outside_usa[50] = "type=\"checkbox\"";
+char customHtml_checkbox_outside_usa[20] = "type=\"checkbox\"";
 
 // Text box (String) - 50 characters maximum
-WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom Username", D_User, 50);
-WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Password", D_Pass, 50);
+WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom Username", D_User, DEXCOM_CREDS_SIZE);
+WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Password", D_Pass, DEXCOM_CREDS_SIZE);
 // Checkbox to indicate location (in/outside USA)
 WiFiManagerParameter custom_outside_usa_checkbox("OutsideUSA", "Located Outside USA", "T", 2, customHtml_checkbox_outside_usa, WFM_LABEL_AFTER);
 WiFiManagerParameter htmlLineBreak("</br></br>");
@@ -306,6 +308,9 @@ bool loadConfigFile()
       return false;
     }
 
+    // Dump the JSON data to the serial port
+    serializeJsonPretty(doc, Serial);
+
     // Deserialize user and password as before...
     strcpy(D_User, doc["D_User"]);
     strcpy(D_Pass, doc["D_Pass"]);
@@ -320,7 +325,8 @@ bool loadConfigFile()
 
       StaticJsonDocument<550> alarmDoc;
       auto deserializeError = deserializeJson(alarmDoc, alarmJsonStr);
-      serializeJsonPretty(alarmDoc, Serial);
+// Moved the JSON dum to above where all JSON data is shown.
+//      serializeJsonPretty(alarmDoc, Serial);
       if (deserializeError)
       {
         Serial.print("Failed to parse alarm: ");
@@ -334,6 +340,7 @@ bool loadConfigFile()
       updateOrAppendAlarm(alarmsV, tempAlarm);
     }
 
+    Serial.println("");
     Serial.println("Configuration loaded successfully");
     return true;
   }
@@ -571,6 +578,9 @@ void Access_point()
   // Explicitly set WiFi mode
   WiFi.mode(WIFI_STA);
 
+  //@@@
+  // wm.setDebugOutput(true, WM_DEBUG_VERBOSE);
+
   // Set config save notify callback
   wm.setSaveConfigCallback(saveConfigCallback);
 
@@ -622,6 +632,8 @@ void Access_point()
       just_wait = false;
     }
   }
+  //@@@
+  // wm.setDebugOutput(true, WM_DEBUG_NOTIFY);
   return;
 }
 
@@ -1327,11 +1339,11 @@ void setup()
 #endif
   //  Buttons
   pinMode(TRIGGER_AP_PIN, INPUT);
-  #if defined DEXCOM_PCB
+#if defined DEXCOM_PCB
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, FALLING);
-  #else
+#else
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
-  #endif
+#endif
   pinMode(SELECT_PIN, INPUT);
   attachInterrupt(SELECT_PIN, SelectPinHandler, FALLING);
   pinMode(BACK_PIN, INPUT);
@@ -1412,7 +1424,9 @@ void setup()
 
   // Add all defined parameters
   wm.addParameter(&Dexcom_Username);
+  Dexcom_Username.setValue(D_User, DEXCOM_CREDS_SIZE);
   wm.addParameter(&Dexcom_Password);
+  Dexcom_Password.setValue(D_Pass, DEXCOM_CREDS_SIZE);
 
   // WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name, alarmsV.alarms[0].name, dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
   for (u8_t i = 0; i < numMenuItems; i++)
