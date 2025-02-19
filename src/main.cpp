@@ -692,7 +692,11 @@ void Alarm_handler(void *pvParameters)
   // minutes since home_values.minutessince
   while (true)
   {
-    const ALARM_STRUCT *criticalAlarm = getMostCriticalActiveAlarm(Home_values.mmol_l);
+    const ALARM_STRUCT *criticalAlarm;
+    if (OutsideUsa)
+      criticalAlarm = getMostCriticalActiveAlarm(Home_values.mmol_l);
+    else
+      criticalAlarm = getMostCriticalActiveAlarm(Home_values.mg_dl);
     bool missedSignal = Home_values.minutes_since > 10.02;
     if (criticalAlarm && !missedSignal)
     {
@@ -916,6 +920,13 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
         colorNames[alarmsV.alarms[selectedItem].colorArrayPos]};
     const int numbersubs = 7;
 
+    // Define the amount to step by when changing the alarm BG value
+    int step;
+    if (OutsideUsa)
+      step = 0.1;
+    else
+      step = 5.0;
+
     for (int i = 0; i < numbersubs; i++)
     { // Adjust the loop condition based on the number of submenu items
       if (i == sub_item)
@@ -930,7 +941,7 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
           }
           else if (i == 1)
           {
-            alarmsV.alarms[selectedItem].level = alarmsV.alarms[selectedItem].level + (increment * 0.1);
+            alarmsV.alarms[selectedItem].level = alarmsV.alarms[selectedItem].level + (increment * step);
           }
           else if (i == 2)
           {
@@ -1022,13 +1033,23 @@ void Graph_Display()
   double datapointsY[CASHED_READINGS];
   double YMax = 12.0;
   double YMin = 2.0;
+  if (!OutsideUsa)
+  {
+    // If the user is inside the USA, use mg/dl numbers.
+    YMax = 220.0;
+    YMin = 40.0;
+  }
   unsigned long datapointsX[CASHED_READINGS];
   unsigned long XMax = ntpClient.getEpochTime();
   unsigned long XMin = XMax - (Hours_Shown_On_Graph * 60 * 60);
 
   for (int i = CASHED_READINGS - 1; i >= 0; i--)
   {
-    datapointsY[i] = follower.GlucoseArray[i].mmol_l;
+    // Based ont he user's location, use the proper numbers
+    if (OutsideUsa)
+      datapointsY[i] = follower.GlucoseArray[i].mmol_l;
+    else
+      datapointsY[i] = follower.GlucoseArray[i].mg_dl;
     if (datapointsY[i] > YMax)
       YMax = datapointsY[i];
     if (datapointsY[i] < YMin)
@@ -1080,7 +1101,18 @@ void Graph_Display()
 
   // Draw horizontal gridlines
 
-  int LowLimit = int(yScale * (1 - (4 - YMin) / (YMax - YMin)));
+  // Again, use the units local to the user (mg/dl or mmol/l).
+  int low_bg, high_bg;
+  char buf[8];  // Char string to use with the atoi() calls.
+  if (OutsideUsa)
+  {
+    low_bg = 4;
+    high_bg = 10;
+  } else {
+    low_bg = 72;
+    high_bg = 180;
+  }
+  int LowLimit = int(yScale * (1 - (low_bg - YMin) / (YMax - YMin)));
   for (int j = 0; j < SCREEN_WIDTH; j += 4) // Draw dotted line
   {
     display.drawPixel(j, LowLimit, SSD1306_WHITE);
@@ -1088,12 +1120,9 @@ void Graph_Display()
   display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
   display.setCursor(1, LowLimit - 4);
   display.setTextSize(1);
-  if (OutsideUsa)
-    display.print("4");
-  else
-    display.print("72");
+  display.print(itoa(low_bg, buf, 10));
 
-  int HighLimit = int(yScale * (1 - (10 - YMin) / (YMax - YMin)));
+  int HighLimit = int(yScale * (1 - (high_bg - YMin) / (YMax - YMin)));
   for (int j = 0; j < SCREEN_WIDTH; j += 4) // Draw dotted line
   {
     display.drawPixel(j, HighLimit, SSD1306_WHITE);
@@ -1101,10 +1130,7 @@ void Graph_Display()
   display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
   display.setCursor(1, HighLimit - 4);
   display.setTextSize(1);
-  if (OutsideUsa)
-    display.print("10");
-  else
-    display.print("180");
+  display.print(itoa(high_bg, buf, 10));
 
   display.display();
 }
@@ -1338,10 +1364,13 @@ void setup()
   rgb.setColor(COLOR_PURPLE_DIM); // RED
 #endif
   //  Buttons
-  pinMode(TRIGGER_AP_PIN, INPUT);
 #if defined DEXCOM_PCB
+  // If we are using the custom PCB (from smeisner), just
+  // use the 'BOOT' button as the AP trigger pin.
+  pinMode(TRIGGER_AP_PIN, INPUT_PULLUP);
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, FALLING);
 #else
+  pinMode(TRIGGER_AP_PIN, INPUT);
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
 #endif
   pinMode(SELECT_PIN, INPUT);
@@ -1427,6 +1456,15 @@ void setup()
   Dexcom_Username.setValue(D_User, DEXCOM_CREDS_SIZE);
   wm.addParameter(&Dexcom_Password);
   Dexcom_Password.setValue(D_Pass, DEXCOM_CREDS_SIZE);
+
+  // Switch values to mg/dl if within the USA
+  if (!OutsideUsa)
+  {
+    alarmsV.alarms[0].level = 240;
+    alarmsV.alarms[1].level = 180;
+    alarmsV.alarms[2].level = 72;
+    alarmsV.alarms[3].level = 60;
+  }
 
   // WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name, alarmsV.alarms[0].name, dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
   for (u8_t i = 0; i < numMenuItems; i++)

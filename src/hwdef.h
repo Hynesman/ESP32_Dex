@@ -93,7 +93,7 @@
   #define USE_PROJECTOR
 
   #define BUZZZER_PIN 26
-  #define TRIGGER_AP_PIN 0//44
+  #define TRIGGER_AP_PIN 0//44  44 is a pin that will never trigger...0 is the boot switch
 
   // Buttons
   #define SELECT_PIN 33
