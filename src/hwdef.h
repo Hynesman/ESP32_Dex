@@ -22,18 +22,12 @@
 //
 #define DEBOUNCE_DELAY 150
 
-
 // If no special boards are defined, default
 // back to original board used by original developer.
 #if !defined HUZZAH32 && !defined DEXCOM_PCB
 
   #define PIN_BUILTIN_LED    13
-
   #define BUZZZER_PIN 18
-  #define R_PIN 17
-  #define G_PIN 16
-  #define B_PIN 5
-
   #define TRIGGER_AP_PIN 4
 
   // Buttons
@@ -46,6 +40,7 @@
   #define SNOOZE_PIN_PLUS 19
   #define SNOOZE_PIN_MINUS 23
 
+  // i2c protocol support. Just use the default pins.
   #define ESP32_SCL SCL
   #define ESP32_SDA SDA
 
@@ -53,8 +48,7 @@
 
 #ifdef HUZZAH32
 
-  #define USE_PROJECTOR
-
+  #define PIN_BUILTIN_LED 13
   #define BUZZZER_PIN 18
   #define TRIGGER_AP_PIN 4
 
@@ -68,21 +62,11 @@
   #define SNOOZE_PIN_PLUS 19
   #define SNOOZE_PIN_MINUS 23
 
-  #ifdef TYPE_TM1621D
-    #define PIN_TM1621D_CS     15
-    #define PIN_TM1621D_CLK    32
-    #define PIN_TM1621D_DATA   14
-  #endif
-
-  #ifdef TYPE_ET6621S
-    #define PIN_TM1621D_CS     14
-    #define PIN_TM1621D_CLK    32
-    #define PIN_TM1621D_DATA   15
-  #endif
-
+  // i2c protocol support
   #define ESP32_SCL 22
   #define ESP32_SDA 21
 
+  // This board removes the RGB LED
   #define NO_RGBLED
 
 #endif
@@ -90,12 +74,11 @@
 
 #ifdef DEXCOM_PCB
 
-  #define USE_PROJECTOR
-
+  #define PIN_BUILTIN_LED 13
   #define BUZZZER_PIN 26
   #define TRIGGER_AP_PIN 0//44  44 is a pin that will never trigger...0 is the boot switch
 
-  // Buttons
+  // Populated buttons
   #define SELECT_PIN 33
   #define BACK_PIN 12
   #define RIGHT_PIN 42
@@ -105,25 +88,16 @@
   #define SNOOZE_PIN_PLUS 1
   #define SNOOZE_PIN_MINUS 2
 
-  #ifdef TYPE_TM1621D
-    #define PIN_TM1621D_CS     7
-    #define PIN_TM1621D_CLK    6
-    #define PIN_TM1621D_DATA   15
-  #endif
-
-  #ifdef TYPE_ET6621S
-    #define PIN_TM1621D_CS     15//7
-    #define PIN_TM1621D_CLK    7//15
-    #define PIN_TM1621D_DATA   6//6
-  #endif
-
+  // i2c protocol support
   #define ESP32_SCL 3
   #define ESP32_SDA 4
 
+  // This board removes the RGB LED
   #define NO_RGBLED
 
 #endif
 
+// If we have an RGB LED, be sure to indicate the pins used
 #if !defined NO_RGBLED
   #define R_PIN 17
   #define G_PIN 16
