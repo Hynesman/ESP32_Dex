@@ -473,9 +473,10 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
 
     // Delay for seconds
     Serial.print("delaying for ");
-    Serial.print(delay_time);
+    // Using min() to avoid crazy values when SNTP connect fails, like on a DNS lookup fail
+    Serial.print(min(delay_time, 300));
     Serial.println(" seconds");
-    vTaskDelay(pdMS_TO_TICKS(delay_time * 1000));
+    vTaskDelay(pdMS_TO_TICKS(min(delay_time, 300) * 1000));
   }
   return;
 }
@@ -909,7 +910,12 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
     display.println(alarmsV.alarms[selectedItem].name); // Display title
 
     // Array or list of submenu items related to the alarm
-    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody","Color"};
+#if !defined NO_RGBLED
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody", "Color"};
+#else
+// If there is no RGB LED onboard, do not show in menu
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Sound", "Melody"};
+#endif
     String subMenuValues[] = {
         alarmsV.alarms[selectedItem].active ? "Yes" : "No",
         dtostrf(alarmsV.alarms[selectedItem].level, 1, 2, buffer), // Assuming level is a float, adjust precision as needed
@@ -918,7 +924,11 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
         alarmsV.alarms[selectedItem].playsound ? "Yes" : "No",
         melodyNames[alarmsV.alarms[selectedItem].soundName],
         colorNames[alarmsV.alarms[selectedItem].colorArrayPos]};
+#if !defined NO_RGBLED
     const int numbersubs = 7;
+#else
+    const int numbersubs = 5;
+#endif
 
     // Define the amount to step by when changing the alarm BG value
     int step;
@@ -947,10 +957,13 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
           {
             alarmsV.alarms[selectedItem].continuous = !alarmsV.alarms[selectedItem].continuous;
           }
+#if !defined NO_RGBLED
+// If there is no RGB LED onboard, do not show in menu
           else if (i == 3)
           {
             alarmsV.alarms[selectedItem].Blink = !alarmsV.alarms[selectedItem].Blink;
           }
+#endif
           else if (i == 4)
           {
             alarmsV.alarms[selectedItem].playsound = !alarmsV.alarms[selectedItem].playsound;
@@ -964,6 +977,7 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
             }
             alarmsV.alarms[selectedItem].soundName = newValue;
           }
+#if !defined NO_RGBLED
           else if (i == 6)
           {
             int newValue = (alarmsV.alarms[selectedItem].colorArrayPos + increment) % numberOfColors;
@@ -973,6 +987,7 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
             }
             alarmsV.alarms[selectedItem].colorArrayPos = newValue;
           }
+#endif
 
         }
         if (sub_menu_item_selected)
