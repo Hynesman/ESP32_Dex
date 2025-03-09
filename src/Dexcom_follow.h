@@ -44,6 +44,7 @@ public:
     int TZ_hours;
     int TZ_offset; //timezone offset in total in seconds.  used also for checking daylight savings. :-)
     String serializeGlucoseReadings(const GlucoseReading glucoseReadings[]);
+    void update_location(bool ous);
 
 private:
     String DexcomServer;

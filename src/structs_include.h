@@ -29,6 +29,7 @@ struct Homescreen_values
 {
     unsigned long timestamp;
     double mmol_l=5.0;
+    uint16_t mg_dl=100;
     const char *trend_description;
     const char *trend_Symbol;
     const char *message_1;

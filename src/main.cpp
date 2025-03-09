@@ -1,4 +1,5 @@
 #define ESP_DRD_USE_SPIFFS true
+#include "hwdef.h"
 #include "Arduino.h"
 #include <WiFi.h>
 #include <Wire.h>
@@ -16,15 +17,18 @@
 #include <Update.h>
 #include <WebServer.h>
 #include "Html_scripts.h"
-WebServer server(80);
+// OTA web Server - Port 81 since WifiManager uses port 80
+WebServer server(81);
 
 #include "structs_include.h"
+#if !defined NO_RGBLED
 #include "RGBLED.h"
+#endif
 
 #include <melody_player.h>
 #include <melody_factory.h>
 #include "sounds.h"
-#define BUZZZER_PIN 18
+
 MelodyPlayer player(BUZZZER_PIN, 3, LOW);
 
 bool AlarmsEnable = true;
@@ -41,20 +45,29 @@ bool Snoozing = false;
 bool shouldSaveConfig = false;
 
 // Variables to hold data from custom textboxes
-char D_User[50] = "username";
-char D_Pass[50] = "password";
+char D_User[50] = "";
+char D_Pass[50] = "";
 
 // ALARMS alarms;
 ALARMSV alarmsV;
 int numMenuItems = alarmsV.alarms.size();
 
 #define DOUBLE_STRING_SIZE 10
+#define DEXCOM_CREDS_SIZE 50
 // Convert double to string
 char buffer[DOUBLE_STRING_SIZE];
 
+// Located outside of USA?
+bool OutsideUsa = true;
+char customHtml_checkbox_outside_usa[20] = "type=\"checkbox\"";
+
 // Text box (String) - 50 characters maximum
-WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom Username", D_User, 50);
-WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Password", D_Pass, 50);
+WiFiManagerParameter Dexcom_Username("Dexcom_User", "Dexcom Username", D_User, DEXCOM_CREDS_SIZE);
+WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Password", D_Pass, DEXCOM_CREDS_SIZE);
+// Checkbox to indicate location (in/outside USA)
+WiFiManagerParameter custom_outside_usa_checkbox("OutsideUSA", "Located Outside USA", "T", 2, customHtml_checkbox_outside_usa, WFM_LABEL_AFTER);
+WiFiManagerParameter htmlLineBreak("</br></br>");
+
 std::vector<WiFiManagerParameter *> customParameters;
 // Text boxes for double values
 WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name.c_str(), alarmsV.alarms[0].name.c_str(), dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
@@ -67,36 +80,19 @@ bool just_wait = false;
 WiFiManager wm;
 int timeout = 120;
 
-#define R_PIN 17
-#define G_PIN 16
-#define B_PIN 5
-
+#if !defined NO_RGBLED
 RGBLED rgb(R_PIN, G_PIN, B_PIN);
+#endif
 
-#define TRIGGER_AP_PIN 4
 bool Launch_AP = false;
 
 int Hours_Shown_On_Graph = 3;
 #define MAX_HOURS 24
 #define MIN_HOURS 1
 
-// Buttons
-#define SELECT_PIN 14
-#define BACK_PIN 12
-#define RIGHT_PIN 33
-#define LEFT_PIN 25
-#define UP_PIN 27
-#define DOWN_PIN 26
-#define SNOOZE_PIN_PLUS 19
-#define SNOOZE_PIN_MINUS 23
-#define DEBOUNCE_DELAY 150
 
 Button buttons = Button::NOTHING;
 bool Next_screen = false;
-
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -110,7 +106,7 @@ NTPClient ntpClient(udp, NTP_SERVER, NTP_UTC_OFFSET, NTP_UPDATE_INTERVAL);
 double glucoseValue;
 String trend = "";
 
-Follower follower(true);
+Follower follower(OutsideUsa);
 
 int error_count = 0;
 
@@ -180,6 +176,9 @@ bool Load_from_WM()
   strcpy(D_User, Dexcom_Username.getValue());
   strcpy(D_Pass, Dexcom_Password.getValue());
 
+  OutsideUsa = (strncmp(custom_outside_usa_checkbox.getValue(), "T", 1) == 0);
+  follower.update_location(OutsideUsa);
+
   // For double values, convert from string to double
   for (u8_t i = 0; i < numMenuItems; i++)
   {
@@ -220,9 +219,11 @@ void saveConfigFile()
   char buffer[DOUBLE_STRING_SIZE];
 
   // Create a JSON document
-  StaticJsonDocument<1082> json;
+  StaticJsonDocument<1120> json;
   json["D_User"] = D_User;
   json["D_Pass"] = D_Pass;
+
+  json["OutsideUsa"] = OutsideUsa;
 
   // Serialize ALARMS struct
   JsonObject alarmsJson = json.createNestedObject("alarms");
@@ -296,7 +297,7 @@ bool loadConfigFile()
       Serial.println("Failed to open configuration file");
       return false;
     }
-    StaticJsonDocument<2024> doc;
+    StaticJsonDocument<2044> doc;
     DeserializationError error = deserializeJson(doc, configFile);
     configFile.close(); // Close the file as soon as it's no longer needed
 
@@ -307,9 +308,14 @@ bool loadConfigFile()
       return false;
     }
 
+    // Dump the JSON data to the serial port
+    serializeJsonPretty(doc, Serial);
+
     // Deserialize user and password as before...
     strcpy(D_User, doc["D_User"]);
     strcpy(D_Pass, doc["D_Pass"]);
+
+    OutsideUsa = doc["OutsideUsa"].as<bool>();
 
     JsonObject alarmsObject = doc["alarms"].as<JsonObject>();
     for (JsonPair kv : alarmsObject)
@@ -319,7 +325,8 @@ bool loadConfigFile()
 
       StaticJsonDocument<550> alarmDoc;
       auto deserializeError = deserializeJson(alarmDoc, alarmJsonStr);
-      serializeJsonPretty(alarmDoc, Serial);
+// Moved the JSON dum to above where all JSON data is shown.
+//      serializeJsonPretty(alarmDoc, Serial);
       if (deserializeError)
       {
         Serial.print("Failed to parse alarm: ");
@@ -333,6 +340,7 @@ bool loadConfigFile()
       updateOrAppendAlarm(alarmsV, tempAlarm);
     }
 
+    Serial.println("");
     Serial.println("Configuration loaded successfully");
     return true;
   }
@@ -379,6 +387,7 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         // Display the new glucose value and trend on the OLED display
         Home_values.timestamp = follower.GlucoseNow.timestamp;
         Home_values.mmol_l = follower.GlucoseNow.mmol_l;
+        Home_values.mg_dl = follower.GlucoseNow.mg_dl;
         Home_values.trend_Symbol = follower.GlucoseNow.trend_Symbol;
         Home_values.message_2 = "";
         follower.GlucoseLevelsArrayPopulate();
@@ -429,6 +438,7 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
       {
         Home_values.timestamp = follower.GlucoseNow.timestamp;
         Home_values.mmol_l = follower.GlucoseNow.mmol_l;
+        Home_values.mg_dl = follower.GlucoseNow.mg_dl;
         Home_values.trend_Symbol = follower.GlucoseNow.trend_Symbol;
         Home_values.message_2 = "Wifi Error";
 
@@ -449,6 +459,7 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         error_count++;
         Home_values.timestamp = follower.GlucoseNow.timestamp;
         Home_values.mmol_l = follower.GlucoseNow.mmol_l;
+        Home_values.mg_dl = follower.GlucoseNow.mg_dl;
         Home_values.trend_Symbol = follower.GlucoseNow.trend_Symbol;
         Home_values.message_2 = "Error last value";
 
@@ -462,9 +473,10 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
 
     // Delay for seconds
     Serial.print("delaying for ");
-    Serial.print(delay_time);
+    // Using min() to avoid crazy values when SNTP connect fails, like on a DNS lookup fail
+    Serial.print(min(delay_time, 300));
     Serial.println(" seconds");
-    vTaskDelay(pdMS_TO_TICKS(delay_time * 1000));
+    vTaskDelay(pdMS_TO_TICKS(min(delay_time, 300) * 1000));
   }
   return;
 }
@@ -567,6 +579,9 @@ void Access_point()
   // Explicitly set WiFi mode
   WiFi.mode(WIFI_STA);
 
+  //@@@
+  // wm.setDebugOutput(true, WM_DEBUG_VERBOSE);
+
   // Set config save notify callback
   wm.setSaveConfigCallback(saveConfigCallback);
 
@@ -618,6 +633,8 @@ void Access_point()
       just_wait = false;
     }
   }
+  //@@@
+  // wm.setDebugOutput(true, WM_DEBUG_NOTIFY);
   return;
 }
 
@@ -676,16 +693,22 @@ void Alarm_handler(void *pvParameters)
   // minutes since home_values.minutessince
   while (true)
   {
-    const ALARM_STRUCT *criticalAlarm = getMostCriticalActiveAlarm(Home_values.mmol_l);
+    const ALARM_STRUCT *criticalAlarm;
+    if (OutsideUsa)
+      criticalAlarm = getMostCriticalActiveAlarm(Home_values.mmol_l);
+    else
+      criticalAlarm = getMostCriticalActiveAlarm(Home_values.mg_dl);
     bool missedSignal = Home_values.minutes_since > 10.02;
     if (criticalAlarm && !missedSignal)
     {
       if (!Snoozing && !blinktoggle)
       {
         //const int SomeColor[3] = {colorValues[criticalAlarm->colorArrayPos]};
+#if !defined NO_RGBLED
         rgb.setColor(colorValues[criticalAlarm->colorArrayPos][0]/6, // Red
              colorValues[criticalAlarm->colorArrayPos][1]/6, // Green
              colorValues[criticalAlarm->colorArrayPos][2]/6); // Blue
+#endif
 
         if (allowcontinuous && !player.isPlaying() && criticalAlarm->playsound)
         {
@@ -699,10 +722,12 @@ void Alarm_handler(void *pvParameters)
       }
       else
       {
+#if !defined NO_RGBLED
         rgb.setColor(colorValues[criticalAlarm->colorArrayPos][0]/10, // Red
              colorValues[criticalAlarm->colorArrayPos][1]/10, // Green
              colorValues[criticalAlarm->colorArrayPos][2]/10); // Blue
-        
+#endif
+
         if (!player.isPlaying() && Snoozing)
         {
           player.stop();
@@ -722,11 +747,15 @@ void Alarm_handler(void *pvParameters)
     else if (missedSignal)
     {
       // Handle missed signal scenario
+#if !defined NO_RGBLED
       rgb.setColor(COLOR_BLUE_DIMMEST); // Use a distinct color to indicate signal loss
+#endif
     }
     else
     {
+#if !defined NO_RGBLED
       rgb.turnOff(); // No critical alarm or snoozing
+#endif
       if (!player.isPlaying())
       {
         player.stop();
@@ -784,7 +813,10 @@ void Homescreen_display()
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
   char glucoseStr[10];                           // Allocate a buffer for the formatted string
-  dtostrf(Home_values.mmol_l, 2, 1, glucoseStr); // Format: total width = 4, 1 decimal place
+  if (OutsideUsa)
+    dtostrf(Home_values.mmol_l, 2, 1, glucoseStr); // Format: total width = 4, 1 decimal place
+  else
+    dtostrf(Home_values.mg_dl, 3, 0, glucoseStr); // Format: total width = 4, 0 decimal place
 
   display.print(glucoseStr);
   int offset1 = display.getCursorX();
@@ -878,7 +910,12 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
     display.println(alarmsV.alarms[selectedItem].name); // Display title
 
     // Array or list of submenu items related to the alarm
-    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody","Color"};
+#if !defined NO_RGBLED
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody", "Color"};
+#else
+// If there is no RGB LED onboard, do not show in menu
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Sound", "Melody"};
+#endif
     String subMenuValues[] = {
         alarmsV.alarms[selectedItem].active ? "Yes" : "No",
         dtostrf(alarmsV.alarms[selectedItem].level, 1, 2, buffer), // Assuming level is a float, adjust precision as needed
@@ -887,7 +924,18 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
         alarmsV.alarms[selectedItem].playsound ? "Yes" : "No",
         melodyNames[alarmsV.alarms[selectedItem].soundName],
         colorNames[alarmsV.alarms[selectedItem].colorArrayPos]};
+#if !defined NO_RGBLED
     const int numbersubs = 7;
+#else
+    const int numbersubs = 5;
+#endif
+
+    // Define the amount to step by when changing the alarm BG value
+    int step;
+    if (OutsideUsa)
+      step = 0.1;
+    else
+      step = 5.0;
 
     for (int i = 0; i < numbersubs; i++)
     { // Adjust the loop condition based on the number of submenu items
@@ -903,16 +951,19 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
           }
           else if (i == 1)
           {
-            alarmsV.alarms[selectedItem].level = alarmsV.alarms[selectedItem].level + (increment * 0.1);
+            alarmsV.alarms[selectedItem].level = alarmsV.alarms[selectedItem].level + (increment * step);
           }
           else if (i == 2)
           {
             alarmsV.alarms[selectedItem].continuous = !alarmsV.alarms[selectedItem].continuous;
           }
+#if !defined NO_RGBLED
+// If there is no RGB LED onboard, do not show in menu
           else if (i == 3)
           {
             alarmsV.alarms[selectedItem].Blink = !alarmsV.alarms[selectedItem].Blink;
           }
+#endif
           else if (i == 4)
           {
             alarmsV.alarms[selectedItem].playsound = !alarmsV.alarms[selectedItem].playsound;
@@ -926,6 +977,7 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
             }
             alarmsV.alarms[selectedItem].soundName = newValue;
           }
+#if !defined NO_RGBLED
           else if (i == 6)
           {
             int newValue = (alarmsV.alarms[selectedItem].colorArrayPos + increment) % numberOfColors;
@@ -935,6 +987,7 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
             }
             alarmsV.alarms[selectedItem].colorArrayPos = newValue;
           }
+#endif
 
         }
         if (sub_menu_item_selected)
@@ -995,13 +1048,23 @@ void Graph_Display()
   double datapointsY[CASHED_READINGS];
   double YMax = 12.0;
   double YMin = 2.0;
+  if (!OutsideUsa)
+  {
+    // If the user is inside the USA, use mg/dl numbers.
+    YMax = 220.0;
+    YMin = 40.0;
+  }
   unsigned long datapointsX[CASHED_READINGS];
   unsigned long XMax = ntpClient.getEpochTime();
   unsigned long XMin = XMax - (Hours_Shown_On_Graph * 60 * 60);
 
   for (int i = CASHED_READINGS - 1; i >= 0; i--)
   {
-    datapointsY[i] = follower.GlucoseArray[i].mmol_l;
+    // Based ont he user's location, use the proper numbers
+    if (OutsideUsa)
+      datapointsY[i] = follower.GlucoseArray[i].mmol_l;
+    else
+      datapointsY[i] = follower.GlucoseArray[i].mg_dl;
     if (datapointsY[i] > YMax)
       YMax = datapointsY[i];
     if (datapointsY[i] < YMin)
@@ -1053,7 +1116,18 @@ void Graph_Display()
 
   // Draw horizontal gridlines
 
-  int LowLimit = int(yScale * (1 - (4 - YMin) / (YMax - YMin)));
+  // Again, use the units local to the user (mg/dl or mmol/l).
+  int low_bg, high_bg;
+  char buf[8];  // Char string to use with the atoi() calls.
+  if (OutsideUsa)
+  {
+    low_bg = 4;
+    high_bg = 10;
+  } else {
+    low_bg = 72;
+    high_bg = 180;
+  }
+  int LowLimit = int(yScale * (1 - (low_bg - YMin) / (YMax - YMin)));
   for (int j = 0; j < SCREEN_WIDTH; j += 4) // Draw dotted line
   {
     display.drawPixel(j, LowLimit, SSD1306_WHITE);
@@ -1061,9 +1135,9 @@ void Graph_Display()
   display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
   display.setCursor(1, LowLimit - 4);
   display.setTextSize(1);
-  display.print("4");
+  display.print(itoa(low_bg, buf, 10));
 
-  int HighLimit = int(yScale * (1 - (10 - YMin) / (YMax - YMin)));
+  int HighLimit = int(yScale * (1 - (high_bg - YMin) / (YMax - YMin)));
   for (int j = 0; j < SCREEN_WIDTH; j += 4) // Draw dotted line
   {
     display.drawPixel(j, HighLimit, SSD1306_WHITE);
@@ -1071,7 +1145,7 @@ void Graph_Display()
   display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
   display.setCursor(1, HighLimit - 4);
   display.setTextSize(1);
-  display.print("10");
+  display.print(itoa(high_bg, buf, 10));
 
   display.display();
 }
@@ -1260,10 +1334,12 @@ void StateLoopTask(void *pvParameters)
         else if (buttons == Button::SELECT)
         {
           playMelodyByName(player, melodyNames[alarmsV.alarms[selectedMenuItem].soundName]);
+#if !defined NO_RGBLED
           rgb.setColor(colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][0]/7, // Red
              colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][1]/7, // Green
              colorValues[alarmsV.alarms[selectedMenuItem].colorArrayPos][2]/7); // Blue
           //rgb.setColor(alarmsV.alarms[selectedMenuItem].ledColorRed, alarmsV.alarms[selectedMenuItem].ledColorGreen, alarmsV.alarms[selectedMenuItem].ledColorBlue);
+#endif
           buttons = Button::NOTHING;
         }
       }
@@ -1296,13 +1372,22 @@ void setup()
 {
   Serial.begin(115200);
 
-  Wire.begin();
+  Wire.begin(ESP32_SDA, ESP32_SCL);
 
   // rgb
+#if !defined NO_RGBLED
   rgb.setColor(COLOR_PURPLE_DIM); // RED
+#endif
   //  Buttons
+#if defined DEXCOM_PCB
+  // If we are using the custom PCB (from smeisner), just
+  // use the 'BOOT' button as the AP trigger pin.
+  pinMode(TRIGGER_AP_PIN, INPUT_PULLUP);
+  attachInterrupt(TRIGGER_AP_PIN, APintHandler, FALLING);
+#else
   pinMode(TRIGGER_AP_PIN, INPUT);
   attachInterrupt(TRIGGER_AP_PIN, APintHandler, RISING);
+#endif
   pinMode(SELECT_PIN, INPUT);
   attachInterrupt(SELECT_PIN, SelectPinHandler, FALLING);
   pinMode(BACK_PIN, INPUT);
@@ -1348,6 +1433,15 @@ void setup()
   {
     Serial.println(F("Forcing config mode as there is no saved config"));
     forceConfig = true;
+
+    // Erase SPIFFS
+    Serial.println(F("Erasing SPIFFS..."));
+    if (SPIFFS.format())
+    {
+      Serial.println(F("SPIFFS erased successfully."));
+    } else {
+      Serial.println(F("Error erasing SPIFFS."));
+    }
   }
 
   // Explicitly set WiFi mode
@@ -1362,9 +1456,30 @@ void setup()
   // Set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
   wm.setAPCallback(configModeCallback);
 
+  //
+  // Start adding parameters to web page for configuration
+  //
+
+  // Add checkbox to indicate in./outside USA
+  wm.addParameter(&custom_outside_usa_checkbox);
+  char ous = OutsideUsa ? 'T' : 'F';
+  custom_outside_usa_checkbox.setValue((const char *)(&ous), 1);
+  wm.addParameter(&htmlLineBreak);
+
   // Add all defined parameters
   wm.addParameter(&Dexcom_Username);
+  Dexcom_Username.setValue(D_User, DEXCOM_CREDS_SIZE);
   wm.addParameter(&Dexcom_Password);
+  Dexcom_Password.setValue(D_Pass, DEXCOM_CREDS_SIZE);
+
+  // Switch values to mg/dl if within the USA
+  if (!OutsideUsa)
+  {
+    alarmsV.alarms[0].level = 240;
+    alarmsV.alarms[1].level = 180;
+    alarmsV.alarms[2].level = 72;
+    alarmsV.alarms[3].level = 60;
+  }
 
   // WiFiManagerParameter HIGHHIGH_ALARM(alarmsV.alarms[0].name, alarmsV.alarms[0].name, dtostrf(alarmsV.alarms[0].level, 1, 2, buffer), DOUBLE_STRING_SIZE);
   for (u8_t i = 0; i < numMenuItems; i++)
@@ -1373,7 +1488,9 @@ void setup()
   }
 
   // rgb
+#if !defined NO_RGBLED
   rgb.setColor(COLOR_BLUE_DIM); // Blue
+#endif
   if (forceConfig)
   // Run if we need a configuration
   {
@@ -1435,7 +1552,7 @@ void setup()
   // Initialize NTPClient
   ntpClient.begin();
   ntpClient.update();
-
+  
   follower.getNewSessionID();
   if (!follower.SessionIDnotDefault())
   {
