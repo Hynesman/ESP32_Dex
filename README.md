@@ -2,6 +2,9 @@
 
 # I am not a medical professional and this code should not be used to make medical decisions. Use at your own risk and remember to always use approved methods to check your blood sugar.  
 
+# UPDATE  10.03.2025
+There has been changes to the repository to support different hardware and use of mmol or mg/dl.  This is not been corrected in this readme.
+
 # Dexcom_Follow
 a library to connect to Dexcom Follow from a Esp32.  using my other library Dexcom_follow
 
