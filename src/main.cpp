@@ -20,6 +20,15 @@
 // OTA web Server - Port 81 since WifiManager uses port 80
 WebServer server(81);
 
+/////////////////////////////////////////////////////////
+// Following for determining the timezone based on GeoIP 
+//
+#include "esp_http_client.h"
+#include <HTTPClient.h>
+#define MAX_HTTP_RECV_BUFFER 512
+//
+/////////////////////////////////////////////////////////
+
 #include "structs_include.h"
 #if !defined NO_RGBLED
 #include "RGBLED.h"
@@ -67,6 +76,23 @@ WiFiManagerParameter Dexcom_Password("Dexcom_Password", "Dexcom Password", D_Pas
 // Checkbox to indicate location (in/outside USA)
 WiFiManagerParameter custom_outside_usa_checkbox("OutsideUSA", "Located Outside USA", "T", 2, customHtml_checkbox_outside_usa, WFM_LABEL_AFTER);
 WiFiManagerParameter htmlLineBreak("</br></br>");
+#ifdef USE_PROJECTOR
+// Text boxes for OpenWeatherMap details
+#define OWM_API_KEY_SIZE 48
+char OWM_API_Key[OWM_API_KEY_SIZE];
+WiFiManagerParameter OWM_Key_text("OWMAPIKey", "OWM API Key", OWM_API_Key, OWM_API_KEY_SIZE);
+#define OWM_POSTAL_SIZE 16
+char OWM_Postal_Code[OWM_POSTAL_SIZE];
+WiFiManagerParameter OWM_Postal_text("OWMPostal", "OWM Postal Code", OWM_Postal_Code, OWM_POSTAL_SIZE);
+#define OWM_COUNTRY_SIZE 8
+char OWM_Country[OWM_COUNTRY_SIZE];
+WiFiManagerParameter OWM_Country_text("OWMCountry", "OWM Country", OWM_Country, OWM_COUNTRY_SIZE);
+
+String openWeatherMapApiKey;
+String openWeatherMapPostal;
+String openWeatherMapCountry;
+
+#endif
 
 std::vector<WiFiManagerParameter *> customParameters;
 // Text boxes for double values
@@ -99,6 +125,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 const int NTP_UTC_OFFSET = 0; // Replace with your UTC offset in seconds
 const char *NTP_SERVER = "pool.ntp.org";
 const long NTP_UPDATE_INTERVAL = 60 * 1000; // Update NTP time every 60 seconds
+static int lastHour = 0; // Detect when the time changes to 2:00AM
 
 WiFiUDP udp;
 NTPClient ntpClient(udp, NTP_SERVER, NTP_UTC_OFFSET, NTP_UPDATE_INTERVAL);
@@ -120,6 +147,74 @@ const unsigned long SnoozeDuration = 5 * 60 * 1000; // min Snooze duration in mi
 
 // possible changable values
 double SIGNAL_LOST_MIN = 10.01;
+
+// Function to set the timezone offset in the Follower object
+void SetFollowerOffset(int offset)
+{
+  Serial.printf ("SetFollowerOffset: Timezone offset: %d\n", offset);
+  follower.TZ_offset = offset;
+  ntpClient.setTimeOffset(follower.TZ_offset);
+}
+
+int lookupGeoIpTimezone()
+{
+  char *timeServer = (char *)"http://worldtimeapi.org/api/ip";
+  char *buffer = (char *)malloc(MAX_HTTP_RECV_BUFFER + 1);
+
+  esp_http_client_config_t config = {
+      .url = timeServer,
+      .path = "/"
+  };
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  esp_err_t err;
+  if ((err = esp_http_client_open(client, 0)) != ESP_OK)
+  {
+    Serial.printf ("lookupGeoIpTimezone: Failed to open HTTP connection: %s\n", esp_err_to_name(err));
+    free(buffer);
+    return -1;
+  }
+  int content_length =  esp_http_client_fetch_headers(client);
+  int total_read_len = 0, read_len;
+  if (total_read_len < content_length && content_length <= MAX_HTTP_RECV_BUFFER)
+  {
+      read_len = esp_http_client_read(client, buffer, content_length);
+      if (read_len <= 0)
+      {
+          Serial.printf ("lookupGeoIpTimezone: Failure during HTTP data read\n");
+      }
+      buffer[read_len] = 0;
+  }
+
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+
+  // Right now, the return string is ~349 bytes long. If they change the
+  // format of the data returned, this valu eof 380 may not be enough.
+  DynamicJsonDocument tzdoc(380);
+  deserializeJson(tzdoc, buffer);
+
+  int offset = tzdoc["raw_offset"];
+
+  // "raw_offset" does not change with daylight savings time, but 
+  //utc_offset does. Ex UTC Offset field: "utc_offset": "-04:00"
+  char _offs[16];
+  int hr, min;
+  strcpy(_offs, tzdoc["utc_offset"]);
+  int cnt = sscanf (_offs, "%d:%d", &hr, &min);
+  offset = (hr * 60 * 60) + (min * 60);
+  if (cnt != 2)
+  {
+    Serial.printf ("lookupGeoIpTimezone: Invalid timezone offset: %s\n", _offs);
+    offset = 0;
+  }
+
+  free(buffer);
+
+  SetFollowerOffset(offset);
+
+  return offset;
+}
 
 void startEnhancedOTAWebServer()
 {
@@ -175,6 +270,14 @@ bool Load_from_WM()
 {
   strcpy(D_User, Dexcom_Username.getValue());
   strcpy(D_Pass, Dexcom_Password.getValue());
+#ifdef USE_PROJECTOR
+  strcpy(OWM_API_Key, OWM_Key_text.getValue());
+  strcpy(OWM_Postal_Code, OWM_Postal_text.getValue());
+  strcpy(OWM_Country, OWM_Country_text.getValue());
+  openWeatherMapApiKey = OWM_API_Key;
+  openWeatherMapPostal = OWM_Postal_Code;
+  openWeatherMapCountry = OWM_Country;
+#endif
 
   OutsideUsa = (strncmp(custom_outside_usa_checkbox.getValue(), "T", 1) == 0);
   follower.update_location(OutsideUsa);
@@ -224,6 +327,11 @@ void saveConfigFile()
   json["D_Pass"] = D_Pass;
 
   json["OutsideUsa"] = OutsideUsa;
+#ifdef USE_PROJECTOR
+  json["OWM_API"] = OWM_API_Key;
+  json["OWM_Postal"] = OWM_Postal_Code;
+  json["OWM_Country"] = OWM_Country;
+#endif
 
   // Serialize ALARMS struct
   JsonObject alarmsJson = json.createNestedObject("alarms");
@@ -316,6 +424,11 @@ bool loadConfigFile()
     strcpy(D_Pass, doc["D_Pass"]);
 
     OutsideUsa = doc["OutsideUsa"].as<bool>();
+#ifdef USE_PROJECTOR
+    strcpy (OWM_API_Key, doc["OWM_API"]);
+    strcpy (OWM_Postal_Code, doc["OWM_Postal"]);
+    strcpy (OWM_Country, doc["OWM_Country"]);
+#endif
 
     JsonObject alarmsObject = doc["alarms"].as<JsonObject>();
     for (JsonPair kv : alarmsObject)
@@ -394,8 +507,15 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
 
         // figure out the delay to the next value
         unsigned long currentTime = ntpClient.getEpochTime();
+        //
+        // It has been observed the USA Dexcom server always presents
+        // in UTC time. Therefore, remove the TZ_offset if the timestamps
+        // do not make sense.
+        //
+        if (currentTime < follower.GlucoseNow.timestamp)
+          currentTime -= follower.TZ_offset;
+
         delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
-        // update minutes_since for signal_loss notify
 
         // daylight savings check
         if (delay_time < -60 * 60 + 30 || delay_time > 60 * 60 - 30)
@@ -405,33 +525,20 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
           ntpClient.update();
           vTaskDelay(pdMS_TO_TICKS(200)); // Little offset for some reason makes this work!!?  I think it gives that ntpClient thread time to work.
           currentTime = ntpClient.getEpochTime();
+          if (currentTime < follower.GlucoseNow.timestamp)
+            currentTime -= follower.TZ_offset;
           delay_time = follower.GlucoseNow.timestamp + (5 * 60) - currentTime;
         }
 
+        // update minutes_since for signal_loss notify
         Home_values.minutes_since = (currentTime - follower.GlucoseNow.timestamp) / 60.0; // only updated every check, relative to timestamp
-        Serial.print("\nMinutes since:");
-        Serial.print(Home_values.minutes_since);
-        Serial.print("\n");
-        if (delay_time < 0 && delay_time > -25)
-        {
-          delay_time = 2;
-        }
-        else if (delay_time <= -25 && delay_time > -35)
-        {
-          delay_time = 5;
-        }
-        else if (delay_time <= -35)
-        {
+        Serial.printf ("Minutes since: %0.2f\n", Home_values.minutes_since);
 
-          while (delay_time < 0)
-          {
-            delay_time += (5 * 60);
-          }
-          if (delay_time > ((5 * 60) - 25))
-          {
-            delay_time = 5; // delay 5 seconds a time for very late values
-          }
+        while (delay_time < 0)
+        {
+          delay_time += (5 * 60);
         }
+
         error_count = 0;
       }
       else if (WiFi.status() != WL_CONNECTED)
@@ -472,10 +579,8 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
     }
 
     // Delay for seconds
-    Serial.print("delaying for ");
     // Using min() to avoid crazy values when SNTP connect fails, like on a DNS lookup fail
-    Serial.print(min(delay_time, 300));
-    Serial.println(" seconds");
+    Serial.printf ("Delaying for %d seconds\n\n", min(delay_time, 300));
     vTaskDelay(pdMS_TO_TICKS(min(delay_time, 300) * 1000));
   }
   return;
@@ -802,6 +907,8 @@ void Alarm_handler(void *pvParameters)
 void Homescreen_display()
 {
   unsigned long currentTime = ntpClient.getEpochTime();
+  if (currentTime < Home_values.timestamp)
+    currentTime -= follower.TZ_offset;
   int time_since_last = int((currentTime - Home_values.timestamp) / 60.0);
   // Convert int to String and concatenate with another string
   String message = String(time_since_last) + "\nmin ago";
@@ -849,6 +956,12 @@ void Homescreen_display()
   display.setCursor(128 / 2, offset2);
   display.setTextSize(2);
   int hours = ntpClient.getHours();
+  if ((lastHour == 1) && (hours == 2))
+  {
+    // It just changed to 2:00AM...update the timezone offset
+    lookupGeoIpTimezone();
+  }
+  lastHour = hours;
   String formattedHours = (hours < 10) ? "0" + String(hours) : String(hours);
   display.print(formattedHours);
   display.print(":");
@@ -911,7 +1024,7 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
 
     // Array or list of submenu items related to the alarm
 #if !defined NO_RGBLED
-    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Blinking", "Sound", "Melody", "Color"};
+    const char *subMenuItems[] = {"Active", "Level", "Continuous", "Sound", "Melody", "Blinking", "Color"};
 #else
 // If there is no RGB LED onboard, do not show in menu
     const char *subMenuItems[] = {"Active", "Level", "Continuous", "Sound", "Melody"};
@@ -920,10 +1033,13 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
         alarmsV.alarms[selectedItem].active ? "Yes" : "No",
         dtostrf(alarmsV.alarms[selectedItem].level, 1, 2, buffer), // Assuming level is a float, adjust precision as needed
         alarmsV.alarms[selectedItem].continuous ? "Yes" : "once",
-        alarmsV.alarms[selectedItem].Blink ? "Yes" : "No",
         alarmsV.alarms[selectedItem].playsound ? "Yes" : "No",
-        melodyNames[alarmsV.alarms[selectedItem].soundName],
-        colorNames[alarmsV.alarms[selectedItem].colorArrayPos]};
+        melodyNames[alarmsV.alarms[selectedItem].soundName]
+#if !defined NO_RGBLED
+        , alarmsV.alarms[selectedItem].Blink ? "Yes" : "No",
+        , colorNames[alarmsV.alarms[selectedItem].colorArrayPos]
+#endif
+        };
 #if !defined NO_RGBLED
     const int numbersubs = 7;
 #else
@@ -957,18 +1073,11 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
           {
             alarmsV.alarms[selectedItem].continuous = !alarmsV.alarms[selectedItem].continuous;
           }
-#if !defined NO_RGBLED
-// If there is no RGB LED onboard, do not show in menu
           else if (i == 3)
-          {
-            alarmsV.alarms[selectedItem].Blink = !alarmsV.alarms[selectedItem].Blink;
-          }
-#endif
-          else if (i == 4)
           {
             alarmsV.alarms[selectedItem].playsound = !alarmsV.alarms[selectedItem].playsound;
           }
-          else if (i == 5)
+          else if (i == 4)
           {
             int newValue = (alarmsV.alarms[selectedItem].soundName + increment) % numberOfMelodies;
             if (newValue < 0)
@@ -978,6 +1087,11 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
             alarmsV.alarms[selectedItem].soundName = newValue;
           }
 #if !defined NO_RGBLED
+// If there is no RGB LED onboard, do not show in menu
+          else if (i == 5)
+          {
+            alarmsV.alarms[selectedItem].Blink = !alarmsV.alarms[selectedItem].Blink;
+          }
           else if (i == 6)
           {
             int newValue = (alarmsV.alarms[selectedItem].colorArrayPos + increment) % numberOfColors;
@@ -1471,6 +1585,14 @@ void setup()
   Dexcom_Username.setValue(D_User, DEXCOM_CREDS_SIZE);
   wm.addParameter(&Dexcom_Password);
   Dexcom_Password.setValue(D_Pass, DEXCOM_CREDS_SIZE);
+#ifdef USE_PROJECTOR
+  wm.addParameter(&OWM_Key_text);
+  OWM_Key_text.setValue(OWM_API_Key, OWM_API_KEY_SIZE);
+  wm.addParameter(&OWM_Postal_text);
+  OWM_Postal_text.setValue(OWM_Postal_Code, OWM_POSTAL_SIZE);
+  wm.addParameter(&OWM_Country_text);
+  OWM_Country_text.setValue(OWM_Country, OWM_COUNTRY_SIZE);
+#endif
 
   // Switch values to mg/dl if within the USA
   if (!OutsideUsa)
@@ -1532,6 +1654,9 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
+  // Based on the GeoIP data, set the local timezone offset
+  lookupGeoIpTimezone();
+
   // Lets deal with the user config values
 
   Load_from_WM();
@@ -1563,6 +1688,12 @@ void setup()
   {
     currentState = State::Home_screen;
   }
+
+  #ifdef USE_PROJECTOR  // Must be called before follower.Xxx calls below
+  xTaskCreate(projectorUpdateTask, "ProjectorUpdateTask", 8192, NULL, 4, NULL);
+  vTaskDelay(pdMS_TO_TICKS(1 * 1000));
+#endif
+
   follower.GlucoseLevelsArrayPopulate();
   follower.GlucoseLevelsNow();
   ntpClient.setTimeOffset(follower.TZ_offset);
