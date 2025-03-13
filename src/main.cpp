@@ -1036,7 +1036,7 @@ void displayMenu(unsigned int selectedItem, bool sub_menu = false, unsigned int 
         alarmsV.alarms[selectedItem].playsound ? "Yes" : "No",
         melodyNames[alarmsV.alarms[selectedItem].soundName]
 #if !defined NO_RGBLED
-        , alarmsV.alarms[selectedItem].Blink ? "Yes" : "No",
+        , alarmsV.alarms[selectedItem].Blink ? "Yes" : "No"
         , colorNames[alarmsV.alarms[selectedItem].colorArrayPos]
 #endif
         };
