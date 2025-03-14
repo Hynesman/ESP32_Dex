@@ -534,9 +534,31 @@ void IRAM_ATTR glucoseUpdateTask(void *pvParameters)
         Home_values.minutes_since = (currentTime - follower.GlucoseNow.timestamp) / 60.0; // only updated every check, relative to timestamp
         Serial.printf ("Minutes since: %0.2f\n", Home_values.minutes_since);
 
-        while (delay_time < 0)
+        //
+        // The logic here is when we fetch an update from Dexcom, we may be slightly
+        // behind the sharing device, like the Dexcom phone app or xDrip that is
+        // feeding Dexcom with data asynchronously every 5 mins. So when we pull an
+        // update, we try again to get a new reading from Dexcom so the displayed BG
+        // reading is not delayed 5 mins.
+        //
+        if (delay_time < 0 && delay_time > -25)
         {
-          delay_time += (5 * 60);
+          delay_time = 2;
+        }
+        else if (delay_time <= -25 && delay_time > -35)
+        {
+          delay_time = 5;
+        }
+        else if (delay_time <= -35)
+        {
+          while (delay_time < 0)
+          {
+            delay_time += (5 * 60);
+          }
+          if (delay_time > ((5 * 60) - 25))
+          {
+            delay_time = 5; // delay 5 seconds a time for very late values
+          }
         }
 
         error_count = 0;
@@ -1689,7 +1711,7 @@ void setup()
     currentState = State::Home_screen;
   }
 
-  #ifdef USE_PROJECTOR  // Must be called before follower.Xxx calls below
+#ifdef USE_PROJECTOR  // Must be called before follower.Xxx calls below
   xTaskCreate(projectorUpdateTask, "ProjectorUpdateTask", 8192, NULL, 4, NULL);
   vTaskDelay(pdMS_TO_TICKS(1 * 1000));
 #endif

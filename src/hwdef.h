@@ -137,7 +137,7 @@
   // RTOS task to update the Projector. Located
   // in projector.cpp and called from main.cpp.
   //
-  void projectorUpdateTask();
+  void projectorUpdateTask(void *);
 
   // Correction used for onboard temp sensor (to indicate ambient room temp)
   #define TEMP_CORRECTION 0
