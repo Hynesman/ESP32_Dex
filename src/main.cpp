@@ -216,6 +216,40 @@ int lookupGeoIpTimezone()
   return offset;
 }
 
+bool DisplayDim = false;
+
+void dimDisplay()
+{
+  int hours;
+  bool setDisplayDim;
+
+  hours = ntpClient.getHours();
+
+  // Between 10:00PM and 7:00AM
+  if ((hours >= 22) || (hours < 7))
+    setDisplayDim = true;
+  else
+    setDisplayDim = false;
+
+  if ((DisplayDim == false) && (setDisplayDim == true))
+  {
+    Serial.printf ("Dimming OLED display\n");
+    DisplayDim = true;
+    display.dim(true);
+    display.ssd1306_command(SSD1306_SETCONTRAST);
+    display.ssd1306_command(1);
+  }
+
+  if ((DisplayDim == true) && (setDisplayDim == false))
+  {
+    Serial.printf ("Brightening OLED display\n");
+    DisplayDim = false;
+    display.dim(true);
+    display.ssd1306_command(SSD1306_SETCONTRAST);
+    display.ssd1306_command(255);
+  }
+}
+
 void startEnhancedOTAWebServer()
 {
   server.on("/", HTTP_GET, []()
@@ -983,7 +1017,11 @@ void Homescreen_display()
     // It just changed to 2:00AM...update the timezone offset
     lookupGeoIpTimezone();
   }
+  // Save the current hour for the next pass
   lastHour = hours;
+  // Test to see if we should change the OLED display brightness
+  dimDisplay();
+
   String formattedHours = (hours < 10) ? "0" + String(hours) : String(hours);
   display.print(formattedHours);
   display.print(":");
@@ -1542,7 +1580,7 @@ void setup()
   attachInterrupt(DOWN_PIN, DownPinHandler, FALLING);
 
   // Initialize OLED display
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+  if (!display.begin(SSD1306_EXTERNALVCC, 0x3C))
   {
     Serial.println(F("SSD1306 allocation failed"));
     for (;;)
@@ -1557,6 +1595,10 @@ void setup()
 
   display.display();
 
+  // Set OLED display to full bright
+  display.dim(true);
+  display.ssd1306_command(SSD1306_SETCONTRAST);
+  display.ssd1306_command(255);
 
   srand(time(NULL));
   // Change to true when testing to force configuration every time we run
@@ -1699,7 +1741,10 @@ void setup()
   // Initialize NTPClient
   ntpClient.begin();
   ntpClient.update();
-  
+
+  // Update the OLED display brightness based on the time
+  dimDisplay();
+
   follower.getNewSessionID();
   if (!follower.SessionIDnotDefault())
   {
@@ -1712,7 +1757,7 @@ void setup()
   }
 
 #ifdef USE_PROJECTOR  // Must be called before follower.Xxx calls below
-  xTaskCreate(projectorUpdateTask, "ProjectorUpdateTask", 8192, NULL, 4, NULL);
+  xTaskCreate(projectorUpdateTask, NULL, 8192, NULL, 4, NULL);
   vTaskDelay(pdMS_TO_TICKS(1 * 1000));
 #endif
 
