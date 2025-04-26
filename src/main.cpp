@@ -1546,6 +1546,7 @@ void setup()
 {
   Serial.begin(115200);
 
+  Serial.printf ("Starting I2C (SDA %d, SCL %d)\n", ESP32_SDA, ESP32_SCL);
   Wire.begin(ESP32_SDA, ESP32_SCL);
 
   // rgb
@@ -1580,6 +1581,7 @@ void setup()
   attachInterrupt(DOWN_PIN, DownPinHandler, FALLING);
 
   // Initialize OLED display
+  // if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
   if (!display.begin(SSD1306_EXTERNALVCC, 0x3C))
   {
     Serial.println(F("SSD1306 allocation failed"));
@@ -1588,7 +1590,6 @@ void setup()
   }
   display.clearDisplay();
   // Set font
-  display.dim(true);
 
   // display.drawBitmap(0, 0, Dexcom_follow_screen, 128, 64, WHITE);
   display.drawBitmap(0, 0, epd_bitmap_logo, 128, 64, WHITE);

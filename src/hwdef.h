@@ -108,6 +108,8 @@
   #define PIN_PROJECTOR_CLK    6
   #define PIN_PROJECTOR_DATA   7
 
+  #define PIN_PROJECTOR_PWM    11
+
   // i2c protocol support
   #define ESP32_SCL 3
   #define ESP32_SDA 4
@@ -140,6 +142,6 @@
   void projectorUpdateTask(void *);
 
   // Correction used for onboard temp sensor (to indicate ambient room temp)
-  #define TEMP_CORRECTION 0
+  #define TEMP_CORRECTION -8.5
 
 #endif
