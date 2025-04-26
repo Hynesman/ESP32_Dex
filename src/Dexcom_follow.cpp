@@ -183,20 +183,20 @@ bool Follower::GlucoseLevelsNow()
                 return false;
             }
 
+            // Uncomment the next line to dump the JSON to the serial console
+            // serializeJsonPretty(doc, Serial);
+
             // Extract the blood glucose value
             GlucoseNow.mg_dl = doc[0]["Value"];
             GlucoseNow.mmol_l = convertToMmol(GlucoseNow.mg_dl);
-            Serial.print("Blood Glucose Level: ");
-            Serial.printf ("%d mg/dl  ", GlucoseNow.mg_dl);
-            Serial.printf ("%2.1f mmol/l\n", GlucoseNow.mmol_l);
+            Serial.printf ("Blood Glucose Level: %d mg/dl  %2.1f mmol/l\n", GlucoseNow.mg_dl, GlucoseNow.mmol_l);
 
             GlucoseNow.trend_description = doc[0]["Trend"].as<const char *>();
             GlucoseNow.trend_Symbol = getTrendSymbol(GlucoseNow.trend_description);
-            Serial.print("current trend: ");
-            Serial.println(GlucoseNow.trend_Symbol);
+            Serial.printf ("Current trend: %s\n", GlucoseNow.trend_Symbol);
 
             GlucoseNow.timestamp = convertToUnixTimestamp(doc[0]["DT"].as<const char *>());
-            Serial.println(GlucoseNow.timestamp);
+            Serial.printf ("Dexcom Timestamp:  %u\n", GlucoseNow.timestamp);
 
             result = true;
         }
@@ -235,6 +235,8 @@ String Follower::removeCharacterFromString(String input, char characterToRemove)
     return result;
 };
 
+extern bool OutsideUsa;
+
 unsigned long Follower::convertToUnixTimestamp(const char *dtValue)
 {
     // Extract the numerical part of the string
@@ -254,11 +256,36 @@ unsigned long Follower::convertToUnixTimestamp(const char *dtValue)
 
         // Get the time zone offset in hours and minutes
         sscanf(offset + 3, "+%2d%2d", &TZ_hours, &TZ_minutes);
-        TZ_offset = TZ_hours*60*60 + TZ_minutes*60;
 
-        // Convert the offset to seconds and adjust the timestamp
-        unsigned long offsetSeconds = TZ_hours * 60 * 60 + TZ_minutes * 60;
-        timestamp += offsetSeconds;
+        /*
+
+        Quick note regarding the following:
+
+        In the USA, the Dexcom server returns the following as an example:
+
+        16:47:51.338 > [
+        16:47:51.338 >   {
+        16:47:51.339 >     "WT": "Date(1740001473000)",
+        16:47:51.342 >     "ST": "Date(1740001473000)",
+        16:47:51.345 >     "DT": "Date(1740001473000+0000)",
+        16:47:51.348 >     "Value": 174,
+        16:47:51.350 >     "Trend": "Flat"
+        16:47:51.353 >   }
+        16:47:51.353 > ]
+
+        The DT string always has "+0000" as the offset. Therefore, for the US-basedd
+        server, we should not update the TZ_offset.
+
+        */
+
+        if (OutsideUsa)
+        {
+          TZ_offset = TZ_hours*60*60 + TZ_minutes*60;
+
+          // Convert the offset to seconds and adjust the timestamp
+          unsigned long offsetSeconds = TZ_hours * 60 * 60 + TZ_minutes * 60;
+          timestamp += offsetSeconds;
+        }
 
         return timestamp; // Convert microseconds to seconds
     }
@@ -319,7 +346,7 @@ const char *Follower::getTrendSymbol(const char *trendDescription)
 void Follower::parseAndStoreData(String jsonString)
 {
     size_t length = jsonString.length();
-    Serial.println(length);
+    // Serial.println(length);
     DynamicJsonDocument doc(length*2); // Adjust the size as needed
 
     DeserializationError error = deserializeJson(doc, jsonString);
